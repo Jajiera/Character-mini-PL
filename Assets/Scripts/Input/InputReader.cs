@@ -25,6 +25,9 @@ namespace Scripts.Input
 
         public Vector2 CurrentMoveInput { get; private set; }
         public Vector2 CurrentLookInput { get; private set; }
+        public Vector2 CurrentZoomDelta { get; private set; }
+
+        public event Action<Vector2> ZoomDeltaEvent;
 
         public bool IsSprintActive { get; private set; }
         public bool IsSprintPressed => IsSprintActive;
@@ -68,10 +71,12 @@ namespace Scripts.Input
 
         public void EnablePlayerInput()
         {
-            if (inputActions != null)
+            if (inputActions == null)
             {
-                inputActions.Player.Enable();
+                inputActions = new InputSystem_Actions();
+                inputActions.Player.SetCallbacks(this);
             }
+            inputActions.Player.Enable();
         }
 
         public void DisablePlayerInput()
@@ -160,6 +165,22 @@ namespace Scripts.Input
         public void OnNext(InputAction.CallbackContext context)
         {
             // Reserved for weapon/item cycling
+        }
+
+        public void OnMouseZoom(InputAction.CallbackContext context)
+        {
+            if (context.performed)
+            {
+                CurrentZoomDelta = context.ReadValue<Vector2>();
+                ZoomDeltaEvent?.Invoke(CurrentZoomDelta);
+            }
+        }
+
+        public void OnGamepadZoom(InputAction.CallbackContext context)
+        {
+            float val = context.ReadValue<float>();
+            CurrentZoomDelta = new Vector2(0f, val);
+            ZoomDeltaEvent?.Invoke(CurrentZoomDelta);
         }
 
         #endregion

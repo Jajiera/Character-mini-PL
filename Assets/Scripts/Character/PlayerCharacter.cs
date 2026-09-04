@@ -36,6 +36,10 @@ namespace Scripts.Character
         [SerializeField] private Transform visualModel;
         [SerializeField] private float stanceTransitionSpeed = 12.0f;
 
+        [Header("Camera & Direction Alignment")]
+        [SerializeField] private bool shouldFaceMoveDirection = true;
+        public Transform cameraTransform;
+
 
         private float targetStanceHeight = 2.0f;
         private Vector3 targetStanceCenter = Vector3.zero;
@@ -69,6 +73,11 @@ namespace Scripts.Character
         public InteractionDetector InteractionDetector => interactionDetector;
         public bool IsInvulnerable => isInvulnerable;
         public float VerticalVelocity => verticalVelocity;
+        public bool ShouldFaceMoveDirection
+        {
+            get => shouldFaceMoveDirection;
+            set => shouldFaceMoveDirection = value;
+        }
 
         // Visual and audio observer events (SRP)
         public event System.Action AttackTriggeredEvent;
@@ -113,6 +122,11 @@ namespace Scripts.Character
                 redundantCollider.enabled = false;
             }
 
+            if (cameraTransform == null && UnityEngine.Camera.main != null)
+            {
+                cameraTransform = UnityEngine.Camera.main.transform;
+            }
+
             SetupVisualModel();
 
             targetStanceHeight = characterController != null ? characterController.height : 2.0f;
@@ -133,6 +147,7 @@ namespace Scripts.Character
         {
             if (inputReader != null)
             {
+                inputReader.EnablePlayerInput();
                 inputReader.JumpStartedEvent += HandleJumpStarted;
                 inputReader.CrouchPerformedEvent += HandleCrouchPerformed;
                 inputReader.RollPerformedEvent += HandleRollPerformed;
@@ -305,16 +320,45 @@ namespace Scripts.Character
                 return Vector3.zero;
             }
 
+            if (cameraTransform == null && UnityEngine.Camera.main != null)
+            {
+                cameraTransform = UnityEngine.Camera.main.transform;
+            }
+
+            if (cameraTransform != null)
+            {
+                // 1. Obtener la dirección relativa de la cámara
+                Vector3 forward = cameraTransform.forward;
+                Vector3 right = cameraTransform.right;
+
+                forward.y = 0f;
+                right.y = 0f;
+
+                forward.Normalize();
+                right.Normalize();
+
+                // 2. Calcular la dirección de movimiento basada en los inputs y la cámara
+                return ((forward * moveInput.y) + (right * moveInput.x)).normalized;
+            }
+
             return new Vector3(moveInput.x, 0f, moveInput.y).normalized;
         }
 
         public void RotateTowards(Vector3 targetDirection, float smoothTime)
         {
-            if (targetDirection.sqrMagnitude < 0.001f) return;
+            if (!shouldFaceMoveDirection || targetDirection.sqrMagnitude < 0.001f) return;
 
             float targetAngle = Mathf.Atan2(targetDirection.x, targetDirection.z) * Mathf.Rad2Deg;
             float angle = Mathf.SmoothDampAngle(transform.eulerAngles.y, targetAngle, ref rotationVelocity, smoothTime);
             transform.rotation = Quaternion.Euler(0f, angle, 0f);
+        }
+
+        public void RotateTowardsSlerp(Vector3 targetDirection, float slerpSpeed)
+        {
+            if (!shouldFaceMoveDirection || targetDirection.sqrMagnitude < 0.001f) return;
+
+            Quaternion toRotation = Quaternion.LookRotation(targetDirection, Vector3.up);
+            transform.rotation = Quaternion.Slerp(transform.rotation, toRotation, slerpSpeed * Time.deltaTime);
         }
 
         public bool IsGrounded()
