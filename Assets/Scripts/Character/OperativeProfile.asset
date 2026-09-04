@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 26bbf2421acb6bc4a90c58688bb31fc0, type: 3}
+  m_Name: OperativeProfile
+  m_EditorClassIdentifier: Assembly-CSharp::Scripts.Data.CharacterDataSO
+  characterId: character_default
+  characterDisplayName: Standard Operative
+  characterDescription: Balanced operative capable of versatile locomotion and tactical maneuvers.
+  visualPrefab: {fileID: 0}
+  animatorController: {fileID: 0}
+  characterAvatar: {fileID: 0}
+  movementParameters: {fileID: 11400000, guid: 1264d1a2462c517468baf9144fd17926, type: 2}
+  maxHealth: 100
+  maxStamina: 100
