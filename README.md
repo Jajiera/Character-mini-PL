@@ -19,6 +19,7 @@ Base arquitectónica modular y extensible para un videojuego de acción / caza e
   - [Mando / Gamepad](#mando--gamepad)
 - [Mecánicas del Jugador](#-mecánicas-del-jugador)
 - [Arquitectura del Proyecto](#-arquitectura-del-proyecto)
+- [Guía Detallada de Scripts (Variables y Funcionalidades)](GUIA_SCRIPTS.md)
 - [Estructura de Carpetas](#-estructura-de-carpetas)
 - [Resolución de Problemas Frecuentes](#-resolución-de-problemas-frecuentes)
 
@@ -161,7 +162,7 @@ Sigue estos pasos para abrir y probar el proyecto desde cero:
 
 ## 🏗️ Arquitectura del Proyecto
 
-El código está estructurado siguiendo principios **SOLID** y patrones de diseño modernos:
+El código está estructurado siguiendo principios **SOLID** y patrones de diseño modernos. Para una referencia detallada de cada script, sus variables de Inspector y sus métodos públicos, consulta la [Guía Técnica de Scripts](GUIA_SCRIPTS.md).
 
 ```mermaid
 flowchart TD
