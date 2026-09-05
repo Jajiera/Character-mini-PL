@@ -30,10 +30,20 @@ namespace Scripts.CameraSystem
         [SerializeField] private int normalPriority = 10;
         [SerializeField] private int aimPriority = 20;
 
+        [Header("Crosshair / Reticle Settings")]
+        [Tooltip("Referencia al GameObject o Canvas de la mira (miraDisparo)")]
+        [SerializeField] private GameObject crosshairUI;
+
         public CinemachineCamera AimCamera
         {
             get => aimCamera;
             set => aimCamera = value;
+        }
+
+        public GameObject CrosshairUI
+        {
+            get => crosshairUI;
+            set => crosshairUI = value;
         }
 
         private InputSystem_Actions controls;
@@ -94,10 +104,16 @@ namespace Scripts.CameraSystem
             }
 
             FindAimCameraIfNull();
+            FindCrosshairIfNull();
 
             if (aimCamera != null)
             {
                 aimCamera.Priority.Value = 0;
+            }
+
+            if (crosshairUI != null)
+            {
+                crosshairUI.SetActive(false);
             }
 
             // Asegurar que las acciones del Input System estén activas
@@ -132,12 +148,59 @@ namespace Scripts.CameraSystem
             }
         }
 
+        private void FindCrosshairIfNull()
+        {
+            if (crosshairUI == null)
+            {
+                crosshairUI = GameObject.Find("miraDisparo") ?? GameObject.Find("MiraDisparo");
+
+                if (crosshairUI == null)
+                {
+                    var rootObjects = UnityEngine.SceneManagement.SceneManager.GetActiveScene().GetRootGameObjects();
+                    foreach (var root in rootObjects)
+                    {
+                        if (root != null && root.name.Equals("miraDisparo", System.StringComparison.OrdinalIgnoreCase))
+                        {
+                            crosshairUI = root;
+                            break;
+                        }
+                    }
+                }
+
+                if (crosshairUI == null)
+                {
+                    var allCanvases = Resources.FindObjectsOfTypeAll<Canvas>();
+                    foreach (var c in allCanvases)
+                    {
+                        if (c != null && c.gameObject.scene.isLoaded && c.gameObject.name.Equals("miraDisparo", System.StringComparison.OrdinalIgnoreCase))
+                        {
+                            crosshairUI = c.gameObject;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
         private void HandleAim(bool isAiming)
         {
             FindAimCameraIfNull();
             if (aimCamera != null)
             {
                 aimCamera.Priority.Value = isAiming ? aimPriority : 0;
+            }
+
+            FindCrosshairIfNull();
+            if (crosshairUI != null)
+            {
+                crosshairUI.SetActive(isAiming);
+            }
+
+            if (!isAiming && orbital != null)
+            {
+                float currentYaw = UnityEngine.Camera.main != null ? UnityEngine.Camera.main.transform.eulerAngles.y : transform.eulerAngles.y;
+                if (currentYaw > 180f) currentYaw -= 360f;
+                orbital.HorizontalAxis.Value = currentYaw;
             }
         }
 
@@ -247,6 +310,11 @@ namespace Scripts.CameraSystem
 
         private void OnDisable()
         {
+            if (crosshairUI != null)
+            {
+                crosshairUI.SetActive(false);
+            }
+
             if (inputReader != null)
             {
                 inputReader.ZoomDeltaEvent -= HandleZoomDelta;

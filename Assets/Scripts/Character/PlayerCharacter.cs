@@ -37,17 +37,36 @@ namespace Scripts.Character
         [SerializeField] private float stanceTransitionSpeed = 12.0f;
 
         [Header("Camera & Direction Alignment")]
-        [SerializeField] private bool shouldFaceMoveDirection = true;
+        [Tooltip("Si es false, el personaje siempre le da la espalda a la cámara y hace strafe (sin girar antinaturalmente al moverse).")]
+        [SerializeField] private bool shouldFaceMoveDirection = false;
         public Transform cameraTransform;
 
         [Header("Aim & Target Tracking")]
         [SerializeField] private Transform eyeTarget;
+        [Tooltip("Referencia opcional a la mira (miraDisparo). Si se deja vacío se auto-detecta.")]
+        [SerializeField] private GameObject crosshairUI;
         [SerializeField] private float aimSensitivityX = 0.15f;
         [SerializeField] private float aimSensitivityY = 0.15f;
         [SerializeField] private float aimPitchMin = -45f;
         [SerializeField] private float aimPitchMax = 60f;
 
+        public GameObject CrosshairUI
+        {
+            get => crosshairUI;
+            set => crosshairUI = value;
+        }
+
         private float currentAimPitch = 0f;
+
+        [Header("Combat & Weapon References")]
+        [Tooltip("Arma equipada (ej. ArcadeGun con ProjectileWeapon). Si se deja vacío se auto-detecta en los hijos.")]
+        [SerializeField] private Weapon currentWeapon;
+
+        public Weapon CurrentWeapon
+        {
+            get => currentWeapon;
+            set => currentWeapon = value;
+        }
 
         [Header("Combat & Attack Charging")]
         [SerializeField] private float maxAttackChargeTime = 1.5f;
@@ -148,6 +167,8 @@ namespace Scripts.Character
                 gameObject.AddComponent<CharacterVisualFeedback>();
             }
 
+            EnsureCurrentWeapon();
+
 
             // Disable redundant CapsuleCollider if present to avoid blocking crouch/prone
             CapsuleCollider redundantCollider = GetComponent<CapsuleCollider>();
@@ -212,11 +233,23 @@ namespace Scripts.Character
                 isChargingAttack = false;
                 currentAttackChargeTimer = 0f;
                 maxChargeReachedLogged = false;
+
+                if (crosshairUI != null)
+                {
+                    crosshairUI.SetActive(false);
+                }
             }
         }
 
         private void Start()
         {
+            FindCrosshairIfNull();
+            if (crosshairUI != null)
+            {
+                crosshairUI.SetActive(false);
+            }
+
+            EnsureCurrentWeapon();
             stateMachine.Initialize(IdleState);
         }
 
@@ -257,8 +290,69 @@ namespace Scripts.Character
             }
         }
 
+        private void FindCrosshairIfNull()
+        {
+            if (crosshairUI == null)
+            {
+                crosshairUI = GameObject.Find("miraDisparo") ?? GameObject.Find("MiraDisparo");
+
+                if (crosshairUI == null)
+                {
+                    var rootObjects = UnityEngine.SceneManagement.SceneManager.GetActiveScene().GetRootGameObjects();
+                    foreach (var root in rootObjects)
+                    {
+                        if (root != null && root.name.Equals("miraDisparo", System.StringComparison.OrdinalIgnoreCase))
+                        {
+                            crosshairUI = root;
+                            break;
+                        }
+                    }
+                }
+
+                if (crosshairUI == null)
+                {
+                    var allCanvases = Resources.FindObjectsOfTypeAll<Canvas>();
+                    foreach (var c in allCanvases)
+                    {
+                        if (c != null && c.gameObject.scene.isLoaded && c.gameObject.name.Equals("miraDisparo", System.StringComparison.OrdinalIgnoreCase))
+                        {
+                            crosshairUI = c.gameObject;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        private void EnsureCurrentWeapon()
+        {
+            if (currentWeapon == null)
+            {
+                currentWeapon = GetComponentInChildren<Scripts.Combat.Weapon>();
+                if (currentWeapon == null)
+                {
+                    Transform gunChild = transform.Find("ArcadeGun") 
+                                          ?? transform.Find("arcadegun") 
+                                          ?? transform.Find("Gun") 
+                                          ?? transform.Find("Weapon")
+                                          ?? transform.Find("Body/ArcadeGun");
+                    if (gunChild != null)
+                    {
+                        currentWeapon = gunChild.gameObject.AddComponent<Scripts.Combat.ProjectileWeapon>();
+                        Debug.Log($"[PlayerCharacter] 🔫 ProjectileWeapon añadido automáticamente a '{gunChild.name}'");
+                    }
+                }
+            }
+        }
+
         private void HandleAimEvent(bool isAiming)
         {
+            FindCrosshairIfNull();
+            if (crosshairUI != null)
+            {
+                crosshairUI.SetActive(isAiming);
+            }
+
             if (isAiming && cameraTransform != null)
             {
                 // Al comenzar a apuntar, alinea el Yaw del jugador inmediatamente con el frente de la cámara
@@ -283,6 +377,31 @@ namespace Scripts.Character
         private void FixedUpdate()
         {
             stateMachine.FixedTick();
+        }
+
+        private void LateUpdate()
+        {
+            AlignWithCameraHeading();
+        }
+
+        private void AlignWithCameraHeading()
+        {
+            if (IsAiming) return;
+
+            if (cameraTransform == null && UnityEngine.Camera.main != null)
+            {
+                cameraTransform = UnityEngine.Camera.main.transform;
+            }
+
+            if (cameraTransform != null)
+            {
+                Vector3 camForward = cameraTransform.forward;
+                camForward.y = 0f;
+                if (camForward.sqrMagnitude > 0.0001f)
+                {
+                    transform.rotation = Quaternion.LookRotation(camForward.normalized, Vector3.up);
+                }
+            }
         }
 
         private void InitializeCharacterProfile()

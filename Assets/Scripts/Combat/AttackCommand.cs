@@ -40,7 +40,19 @@ namespace Scripts.Combat
         {
             string chargeType = chargeRatio >= 0.99f ? "CARGA MÁXIMA" : (chargeRatio >= 0.35f ? "SEMI-CARGADO" : "RÁPIDO");
             Debug.Log($"[CombatCommandQueue] ⚔️ ¡Ataque Ejecutado [{chargeType}]! Daño: {CalculatedDamage:F1} | Carga: {chargeRatio * 100f:F0}% ({chargeDuration:F2}s)");
-            // Triggers attack animation / combo logic
+
+            // Disparar el arma equipada pasando la carga del ataque
+            if (character != null)
+            {
+                if (character.CurrentWeapon != null)
+                {
+                    character.CurrentWeapon.Fire(chargeRatio);
+                }
+                else
+                {
+                    Debug.LogWarning("[CombatCommandQueue] ⚠️ No se encontró ningún Weapon equipado en el Player (CurrentWeapon es null). Asegúrate de que ArcadeGun tenga el componente ProjectileWeapon.");
+                }
+            }
         }
     }
 }
