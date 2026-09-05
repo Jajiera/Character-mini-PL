@@ -24,6 +24,18 @@ namespace Scripts.CameraSystem
         [Header("Input Dependency (Optional)")]
         [SerializeField] private InputReader inputReader;
 
+        [Header("Aim Camera Integration")]
+        [Tooltip("Referencia a la cámara de apuntado ThirdPersonAimCamera")]
+        [SerializeField] private CinemachineCamera aimCamera;
+        [SerializeField] private int normalPriority = 10;
+        [SerializeField] private int aimPriority = 20;
+
+        public CinemachineCamera AimCamera
+        {
+            get => aimCamera;
+            set => aimCamera = value;
+        }
+
         private InputSystem_Actions controls;
         private CinemachineCamera cam;
         private CinemachineOrbitalFollow orbital;
@@ -75,11 +87,25 @@ namespace Scripts.CameraSystem
                 currentZoom = targetZoom;
             }
 
+            // Inicializar prioridades de cámaras
+            if (cam != null)
+            {
+                cam.Priority.Value = normalPriority;
+            }
+
+            FindAimCameraIfNull();
+
+            if (aimCamera != null)
+            {
+                aimCamera.Priority.Value = 0;
+            }
+
             // Asegurar que las acciones del Input System estén activas
             if (inputReader != null)
             {
                 inputReader.EnablePlayerInput();
                 inputReader.ZoomDeltaEvent += HandleZoomDelta;
+                inputReader.AimEvent += HandleAim;
             }
             else
             {
@@ -89,7 +115,36 @@ namespace Scripts.CameraSystem
                 controls.Player.MouseZoom.performed += HandleMouseScroll;
                 controls.Player.GamepadZoom.performed += HandleGamepadZoom;
                 controls.Player.GamepadZoom.canceled += HandleGamepadZoomCanceled;
+                controls.Player.Aim.performed += HandleAimAction;
+                controls.Player.Aim.canceled += HandleAimAction;
             }
+        }
+
+        private void FindAimCameraIfNull()
+        {
+            if (aimCamera == null)
+            {
+                GameObject aimObj = GameObject.Find("ThirdPersonAimCamera");
+                if (aimObj != null)
+                {
+                    aimCamera = aimObj.GetComponent<CinemachineCamera>();
+                }
+            }
+        }
+
+        private void HandleAim(bool isAiming)
+        {
+            FindAimCameraIfNull();
+            if (aimCamera != null)
+            {
+                aimCamera.Priority.Value = isAiming ? aimPriority : 0;
+            }
+        }
+
+        private void HandleAimAction(InputAction.CallbackContext context)
+        {
+            bool isAiming = context.performed;
+            HandleAim(isAiming);
         }
 
         private void HandleMouseScroll(InputAction.CallbackContext context)
@@ -195,6 +250,7 @@ namespace Scripts.CameraSystem
             if (inputReader != null)
             {
                 inputReader.ZoomDeltaEvent -= HandleZoomDelta;
+                inputReader.AimEvent -= HandleAim;
             }
 
             if (controls != null)
@@ -202,6 +258,8 @@ namespace Scripts.CameraSystem
                 controls.Player.MouseZoom.performed -= HandleMouseScroll;
                 controls.Player.GamepadZoom.performed -= HandleGamepadZoom;
                 controls.Player.GamepadZoom.canceled -= HandleGamepadZoomCanceled;
+                controls.Player.Aim.performed -= HandleAimAction;
+                controls.Player.Aim.canceled -= HandleAimAction;
                 controls.Disable();
             }
         }

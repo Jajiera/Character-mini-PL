@@ -20,14 +20,21 @@ namespace Scripts.Input
         public event Action RollPerformedEvent;
 
         // Observer Events for combat and interaction commands
+        public event Action AttackStartedEvent;
         public event Action AttackPerformedEvent;
+        public event Action AttackCanceledEvent;
         public event Action InteractPerformedEvent;
+
+        public bool IsAttackPressed { get; private set; }
 
         public Vector2 CurrentMoveInput { get; private set; }
         public Vector2 CurrentLookInput { get; private set; }
         public Vector2 CurrentZoomDelta { get; private set; }
 
         public event Action<Vector2> ZoomDeltaEvent;
+        public event Action<bool> AimEvent;
+
+        public bool IsAiming { get; private set; }
 
         public bool IsSprintActive { get; private set; }
         public bool IsSprintPressed => IsSprintActive;
@@ -49,6 +56,17 @@ namespace Scripts.Input
             {
                 SprintCanceledEvent?.Invoke();
             }
+        }
+
+        public void SetAimActive(bool active)
+        {
+            if (IsAiming == active) return;
+            IsAiming = active;
+            if (IsAiming && IsSprintActive)
+            {
+                SetSprintActive(false);
+            }
+            AimEvent?.Invoke(IsAiming);
         }
 
         private InputSystem_Actions inputActions;
@@ -103,9 +121,20 @@ namespace Scripts.Input
 
         public void OnAttack(InputAction.CallbackContext context)
         {
-            if (context.performed)
+            if (context.started)
             {
+                IsAttackPressed = true;
+                AttackStartedEvent?.Invoke();
+            }
+            else if (context.performed)
+            {
+                IsAttackPressed = true;
                 AttackPerformedEvent?.Invoke();
+            }
+            else if (context.canceled)
+            {
+                IsAttackPressed = false;
+                AttackCanceledEvent?.Invoke();
             }
         }
 
@@ -181,6 +210,18 @@ namespace Scripts.Input
             float val = context.ReadValue<float>();
             CurrentZoomDelta = new Vector2(0f, val);
             ZoomDeltaEvent?.Invoke(CurrentZoomDelta);
+        }
+
+        public void OnAim(InputAction.CallbackContext context)
+        {
+            if (context.started || context.performed)
+            {
+                SetAimActive(true);
+            }
+            else if (context.canceled)
+            {
+                SetAimActive(false);
+            }
         }
 
         #endregion

@@ -40,6 +40,24 @@ namespace Scripts.Character
         [SerializeField] private bool shouldFaceMoveDirection = true;
         public Transform cameraTransform;
 
+        [Header("Aim & Target Tracking")]
+        [SerializeField] private Transform eyeTarget;
+        [SerializeField] private float aimSensitivityX = 0.15f;
+        [SerializeField] private float aimSensitivityY = 0.15f;
+        [SerializeField] private float aimPitchMin = -45f;
+        [SerializeField] private float aimPitchMax = 60f;
+
+        private float currentAimPitch = 0f;
+
+        [Header("Combat & Attack Charging")]
+        [SerializeField] private float maxAttackChargeTime = 1.5f;
+        [SerializeField] private float baseAttackDamage = 15f;
+        [SerializeField] private float maxAttackDamage = 45f;
+
+        private bool isChargingAttack = false;
+        private float currentAttackChargeTimer = 0f;
+        private bool maxChargeReachedLogged = false;
+
 
         private float targetStanceHeight = 2.0f;
         private Vector3 targetStanceCenter = Vector3.zero;
@@ -79,8 +97,19 @@ namespace Scripts.Character
             set => shouldFaceMoveDirection = value;
         }
 
+        public bool IsAiming => inputReader != null && inputReader.IsAiming;
+        public Transform EyeTarget => eyeTarget;
+
+        public bool IsChargingAttack => isChargingAttack;
+        public float AttackChargeRatio => maxAttackChargeTime > 0f ? Mathf.Clamp01(currentAttackChargeTimer / maxAttackChargeTime) : 0f;
+        public float CurrentAttackChargeTimer => currentAttackChargeTimer;
+        public float MaxAttackChargeTime => maxAttackChargeTime;
+
         // Visual and audio observer events (SRP)
         public event System.Action AttackTriggeredEvent;
+        public event System.Action<float> AttackReleasedEvent;
+        public event System.Action AttackChargeStartedEvent;
+        public event System.Action AttackMaxChargeReachedEvent;
         public event System.Action InteractTriggeredEvent;
 
         private void Awake()
@@ -114,6 +143,11 @@ namespace Scripts.Character
                 }
             }
 
+            if (GetComponent<CharacterVisualFeedback>() == null)
+            {
+                gameObject.AddComponent<CharacterVisualFeedback>();
+            }
+
 
             // Disable redundant CapsuleCollider if present to avoid blocking crouch/prone
             CapsuleCollider redundantCollider = GetComponent<CapsuleCollider>();
@@ -125,6 +159,11 @@ namespace Scripts.Character
             if (cameraTransform == null && UnityEngine.Camera.main != null)
             {
                 cameraTransform = UnityEngine.Camera.main.transform;
+            }
+
+            if (eyeTarget == null)
+            {
+                eyeTarget = transform.Find("EyeTarget");
             }
 
             SetupVisualModel();
@@ -151,8 +190,10 @@ namespace Scripts.Character
                 inputReader.JumpStartedEvent += HandleJumpStarted;
                 inputReader.CrouchPerformedEvent += HandleCrouchPerformed;
                 inputReader.RollPerformedEvent += HandleRollPerformed;
-                inputReader.AttackPerformedEvent += HandleAttackPerformed;
+                inputReader.AttackStartedEvent += HandleAttackStarted;
+                inputReader.AttackCanceledEvent += HandleAttackCanceled;
                 inputReader.InteractPerformedEvent += HandleInteractPerformed;
+                inputReader.AimEvent += HandleAimEvent;
             }
         }
 
@@ -163,8 +204,14 @@ namespace Scripts.Character
                 inputReader.JumpStartedEvent -= HandleJumpStarted;
                 inputReader.CrouchPerformedEvent -= HandleCrouchPerformed;
                 inputReader.RollPerformedEvent -= HandleRollPerformed;
-                inputReader.AttackPerformedEvent -= HandleAttackPerformed;
+                inputReader.AttackStartedEvent -= HandleAttackStarted;
+                inputReader.AttackCanceledEvent -= HandleAttackCanceled;
                 inputReader.InteractPerformedEvent -= HandleInteractPerformed;
+                inputReader.AimEvent -= HandleAimEvent;
+
+                isChargingAttack = false;
+                currentAttackChargeTimer = 0f;
+                maxChargeReachedLogged = false;
             }
         }
 
@@ -176,7 +223,61 @@ namespace Scripts.Character
         private void Update()
         {
             UpdateStanceDimensions();
+            UpdateAimOrientation();
+            UpdateAttackCharge();
             stateMachine.Tick();
+        }
+
+        private void UpdateAimOrientation()
+        {
+            if (IsAiming)
+            {
+                Vector2 look = inputReader != null ? inputReader.CurrentLookInput : Vector2.zero;
+
+                // Rotar horizontalmente el cuerpo del jugador (Yaw)
+                if (Mathf.Abs(look.x) > 0.001f)
+                {
+                    transform.Rotate(Vector3.up, look.x * aimSensitivityX, Space.World);
+                }
+
+                // Rotar verticalmente el EyeTarget (Pitch)
+                if (Mathf.Abs(look.y) > 0.001f)
+                {
+                    currentAimPitch = Mathf.Clamp(currentAimPitch - look.y * aimSensitivityY, aimPitchMin, aimPitchMax);
+                }
+
+                if (eyeTarget != null)
+                {
+                    eyeTarget.localRotation = Quaternion.Euler(currentAimPitch, 0f, 0f);
+                }
+            }
+            else if (eyeTarget != null && Quaternion.Angle(eyeTarget.localRotation, Quaternion.identity) > 0.05f)
+            {
+                eyeTarget.localRotation = Quaternion.Slerp(eyeTarget.localRotation, Quaternion.identity, 10f * Time.deltaTime);
+            }
+        }
+
+        private void HandleAimEvent(bool isAiming)
+        {
+            if (isAiming && cameraTransform != null)
+            {
+                // Al comenzar a apuntar, alinea el Yaw del jugador inmediatamente con el frente de la cámara
+                Vector3 camForward = cameraTransform.forward;
+                camForward.y = 0f;
+                if (camForward.sqrMagnitude > 0.001f)
+                {
+                    transform.rotation = Quaternion.LookRotation(camForward.normalized, Vector3.up);
+                }
+
+                // Obtener el pitch inicial de la cámara para transición suave continua
+                currentAimPitch = cameraTransform.eulerAngles.x;
+                if (currentAimPitch > 180f) currentAimPitch -= 360f;
+                currentAimPitch = Mathf.Clamp(currentAimPitch, aimPitchMin, aimPitchMax);
+                if (eyeTarget != null)
+                {
+                    eyeTarget.localRotation = Quaternion.Euler(currentAimPitch, 0f, 0f);
+                }
+            }
         }
 
         private void FixedUpdate()
@@ -261,12 +362,48 @@ namespace Scripts.Character
             }
         }
 
-        private void HandleAttackPerformed()
+        private void HandleAttackStarted()
         {
+            isChargingAttack = true;
+            currentAttackChargeTimer = 0f;
+            maxChargeReachedLogged = false;
+            Debug.Log("[Combat] ⏳ Input Ataque Detectado: Comenzando carga de ataque (mantén presionado)...");
+            AttackChargeStartedEvent?.Invoke();
+        }
+
+        private void UpdateAttackCharge()
+        {
+            if (isChargingAttack)
+            {
+                currentAttackChargeTimer += Time.deltaTime;
+                if (!maxChargeReachedLogged && currentAttackChargeTimer >= maxAttackChargeTime)
+                {
+                    maxChargeReachedLogged = true;
+                    Debug.Log($"[Combat] ★ ¡CARGA MÁXIMA DE ATAQUE COMPLETA! (Tiempo: {maxAttackChargeTime:F1}s | Carga: 100%) - ¡Listo para liberar!");
+                    AttackMaxChargeReachedEvent?.Invoke();
+                }
+            }
+        }
+
+        private void HandleAttackCanceled()
+        {
+            if (!isChargingAttack) return;
+
+            float chargeDuration = currentAttackChargeTimer;
+            float chargeRatio = maxAttackChargeTime > 0f ? Mathf.Clamp01(chargeDuration / maxAttackChargeTime) : 1f;
+
+            isChargingAttack = false;
+            currentAttackChargeTimer = 0f;
+            maxChargeReachedLogged = false;
+
+            Debug.Log($"[Combat] 💥 Input Ataque Liberado: Botón soltado tras {chargeDuration:F2}s de carga (Carga: {chargeRatio * 100f:F0}%). Liberando ataque...");
+
             float bufferTime = ActiveMovementData != null ? ActiveMovementData.CommandBufferDuration : 0.35f;
-            commandQueue.EnqueueCommand(new AttackCommand(this, bufferTime));
+            commandQueue.EnqueueCommand(new AttackCommand(this, chargeRatio, chargeDuration, bufferTime, baseAttackDamage, maxAttackDamage));
             commandQueue.TryExecuteNextCommand();
+
             AttackTriggeredEvent?.Invoke();
+            AttackReleasedEvent?.Invoke(chargeRatio);
         }
 
         private void HandleInteractPerformed()
@@ -346,6 +483,7 @@ namespace Scripts.Character
 
         public void RotateTowards(Vector3 targetDirection, float smoothTime)
         {
+            if (IsAiming) return;
             if (!shouldFaceMoveDirection || targetDirection.sqrMagnitude < 0.001f) return;
 
             float targetAngle = Mathf.Atan2(targetDirection.x, targetDirection.z) * Mathf.Rad2Deg;
@@ -355,6 +493,7 @@ namespace Scripts.Character
 
         public void RotateTowardsSlerp(Vector3 targetDirection, float slerpSpeed)
         {
+            if (IsAiming) return;
             if (!shouldFaceMoveDirection || targetDirection.sqrMagnitude < 0.001f) return;
 
             Quaternion toRotation = Quaternion.LookRotation(targetDirection, Vector3.up);
