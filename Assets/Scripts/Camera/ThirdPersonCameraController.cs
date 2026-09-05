@@ -97,6 +97,21 @@ namespace Scripts.CameraSystem
                 currentZoom = targetZoom;
             }
 
+            // Eliminar amortiguaciones que causan rotación de la mira al moverse hacia los lados (strafe)
+            if (orbital != null)
+            {
+                var tracker = orbital.TrackerSettings;
+                tracker.PositionDamping = Vector3.zero;
+                tracker.RotationDamping = Vector3.zero;
+                orbital.TrackerSettings = tracker;
+            }
+
+            var composer = GetComponent<CinemachineRotationComposer>() ?? GetComponentInChildren<CinemachineRotationComposer>();
+            if (composer != null)
+            {
+                composer.Damping = Vector2.zero;
+            }
+
             // Inicializar prioridades de cámaras
             if (cam != null)
             {
@@ -144,6 +159,15 @@ namespace Scripts.CameraSystem
                 if (aimObj != null)
                 {
                     aimCamera = aimObj.GetComponent<CinemachineCamera>();
+                }
+            }
+
+            if (aimCamera != null)
+            {
+                var aimFollow = aimCamera.GetComponent<CinemachineThirdPersonFollow>() ?? aimCamera.GetComponentInChildren<CinemachineThirdPersonFollow>();
+                if (aimFollow != null)
+                {
+                    aimFollow.Damping = Vector3.zero;
                 }
             }
         }

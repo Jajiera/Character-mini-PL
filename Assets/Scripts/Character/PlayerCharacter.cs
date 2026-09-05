@@ -353,23 +353,27 @@ namespace Scripts.Character
                 crosshairUI.SetActive(isAiming);
             }
 
-            if (isAiming && cameraTransform != null)
+            if (isAiming)
             {
-                // Al comenzar a apuntar, alinea el Yaw del jugador inmediatamente con el frente de la cámara
-                Vector3 camForward = cameraTransform.forward;
-                camForward.y = 0f;
-                if (camForward.sqrMagnitude > 0.001f)
+                Transform cam = GetActiveCameraTransform();
+                if (cam != null)
                 {
-                    transform.rotation = Quaternion.LookRotation(camForward.normalized, Vector3.up);
-                }
+                    // Al comenzar a apuntar, alinea el Yaw del jugador inmediatamente con el frente de la cámara
+                    Vector3 camForward = cam.forward;
+                    camForward.y = 0f;
+                    if (camForward.sqrMagnitude > 0.001f)
+                    {
+                        transform.rotation = Quaternion.LookRotation(camForward.normalized, Vector3.up);
+                    }
 
-                // Obtener el pitch inicial de la cámara para transición suave continua
-                currentAimPitch = cameraTransform.eulerAngles.x;
-                if (currentAimPitch > 180f) currentAimPitch -= 360f;
-                currentAimPitch = Mathf.Clamp(currentAimPitch, aimPitchMin, aimPitchMax);
-                if (eyeTarget != null)
-                {
-                    eyeTarget.localRotation = Quaternion.Euler(currentAimPitch, 0f, 0f);
+                    // Obtener el pitch inicial de la cámara para transición suave continua
+                    currentAimPitch = cam.eulerAngles.x;
+                    if (currentAimPitch > 180f) currentAimPitch -= 360f;
+                    currentAimPitch = Mathf.Clamp(currentAimPitch, aimPitchMin, aimPitchMax);
+                    if (eyeTarget != null)
+                    {
+                        eyeTarget.localRotation = Quaternion.Euler(currentAimPitch, 0f, 0f);
+                    }
                 }
             }
         }
@@ -386,22 +390,27 @@ namespace Scripts.Character
 
         private void AlignWithCameraHeading()
         {
-            if (IsAiming) return;
+            if (shouldFaceMoveDirection || IsAiming) return;
 
-            if (cameraTransform == null && UnityEngine.Camera.main != null)
+            Transform cam = GetActiveCameraTransform();
+            if (cam != null)
             {
-                cameraTransform = UnityEngine.Camera.main.transform;
-            }
-
-            if (cameraTransform != null)
-            {
-                Vector3 camForward = cameraTransform.forward;
+                Vector3 camForward = cam.forward;
                 camForward.y = 0f;
                 if (camForward.sqrMagnitude > 0.0001f)
                 {
                     transform.rotation = Quaternion.LookRotation(camForward.normalized, Vector3.up);
                 }
             }
+        }
+
+        public Transform GetActiveCameraTransform()
+        {
+            if (UnityEngine.Camera.main != null)
+            {
+                return UnityEngine.Camera.main.transform;
+            }
+            return cameraTransform != null ? cameraTransform : transform;
         }
 
         private void InitializeCharacterProfile()
@@ -576,16 +585,12 @@ namespace Scripts.Character
                 return Vector3.zero;
             }
 
-            if (cameraTransform == null && UnityEngine.Camera.main != null)
-            {
-                cameraTransform = UnityEngine.Camera.main.transform;
-            }
-
-            if (cameraTransform != null)
+            Transform cam = GetActiveCameraTransform();
+            if (cam != null)
             {
                 // 1. Obtener la dirección relativa de la cámara
-                Vector3 forward = cameraTransform.forward;
-                Vector3 right = cameraTransform.right;
+                Vector3 forward = cam.forward;
+                Vector3 right = cam.right;
 
                 forward.y = 0f;
                 right.y = 0f;
