@@ -232,9 +232,89 @@ namespace Scripts.Character
             targetRenderer.SetPropertyBlock(propertyBlock);
         }
 
-        #region HUD Charge Bar Visualization
+        #region HUD Weapon & Charge Visualization
 
         private void OnGUI()
+        {
+            if (playerCharacter == null) return;
+
+            DrawWeaponHUD();
+            DrawChargeBar();
+        }
+
+        private void DrawWeaponHUD()
+        {
+            if (playerCharacter.CurrentWeapon == null) return;
+
+            var weapon = playerCharacter.CurrentWeapon;
+            float panelWidth = 260f;
+            float panelHeight = 70f;
+            float margin = 24f;
+            float posX = Screen.width - panelWidth - margin;
+            float posY = Screen.height - panelHeight - margin;
+
+            Rect bgRect = new Rect(posX, posY, panelWidth, panelHeight);
+            DrawRect(bgRect, new Color(0.05f, 0.07f, 0.10f, 0.85f));
+
+            Color borderColor = weapon.IsReloading 
+                ? Color.Lerp(Color.yellow, new Color(1f, 0.5f, 0f), Mathf.PingPong(Time.time * 6f, 1f))
+                : (weapon.CurrentAmmo == 0 ? Color.red : new Color(0.25f, 0.45f, 0.70f, 0.85f));
+            DrawBorder(bgRect, borderColor, 2f);
+
+            if (labelStyle == null)
+            {
+                labelStyle = new GUIStyle(GUI.skin.label)
+                {
+                    alignment = TextAnchor.MiddleLeft,
+                    fontSize = 12,
+                    fontStyle = FontStyle.Bold
+                };
+            }
+
+            // 1. Nombre del arma y tipo
+            labelStyle.alignment = TextAnchor.MiddleLeft;
+            labelStyle.fontSize = 13;
+            labelStyle.normal.textColor = Color.white;
+            string chargeTag = weapon.AllowCharging ? " [⚡Carga]" : "";
+            GUI.Label(new Rect(posX + 12f, posY + 8f, panelWidth - 24f, 18f), $"🔫 {weapon.WeaponName}{chargeTag}", labelStyle);
+
+            // 2. Estado de Munición o Recarga
+            if (weapon.IsReloading)
+            {
+                labelStyle.fontSize = 11;
+                labelStyle.normal.textColor = Color.yellow;
+                GUI.Label(new Rect(posX + 12f, posY + 28f, panelWidth - 24f, 16f), $"🔄 RECARGANDO CARTUCHO... {(weapon.ReloadProgress * 100f):F0}%", labelStyle);
+
+                // Barra de progreso de recarga
+                float reloadBarWidth = panelWidth - 24f;
+                float reloadBarHeight = 6f;
+                Rect rBarBg = new Rect(posX + 12f, posY + 48f, reloadBarWidth, reloadBarHeight);
+                Rect rBarFill = new Rect(posX + 12f, posY + 48f, reloadBarWidth * weapon.ReloadProgress, reloadBarHeight);
+                DrawRect(rBarBg, new Color(0.2f, 0.2f, 0.2f, 0.8f));
+                DrawRect(rBarFill, Color.yellow);
+            }
+            else if (weapon.CurrentAmmo == 0)
+            {
+                labelStyle.fontSize = 11;
+                labelStyle.normal.textColor = Color.Lerp(Color.red, Color.yellow, Mathf.PingPong(Time.time * 8f, 1f));
+                GUI.Label(new Rect(posX + 12f, posY + 28f, panelWidth - 24f, 16f), "⚠️ ¡CARTUCHO VACÍO!", labelStyle);
+                labelStyle.fontSize = 10;
+                labelStyle.normal.textColor = Color.white;
+                GUI.Label(new Rect(posX + 12f, posY + 46f, panelWidth - 24f, 14f), "Pulsa Disparar para recargar", labelStyle);
+            }
+            else
+            {
+                labelStyle.fontSize = 18;
+                labelStyle.normal.textColor = weapon.CurrentAmmo <= 3 ? new Color(1f, 0.3f, 0.2f) : new Color(0.4f, 0.9f, 1f);
+                GUI.Label(new Rect(posX + 12f, posY + 28f, panelWidth - 24f, 24f), $"{weapon.CurrentAmmo} / {weapon.CartridgeCapacity}", labelStyle);
+
+                labelStyle.fontSize = 10;
+                labelStyle.normal.textColor = new Color(0.7f, 0.7f, 0.7f, 0.9f);
+                GUI.Label(new Rect(posX + 12f, posY + 50f, panelWidth - 24f, 14f), $"Cadencia: {weapon.TimeBetweenShots:F2}s", labelStyle);
+            }
+        }
+
+        private void DrawChargeBar()
         {
             if (!showChargeHUD || playerCharacter == null || !playerCharacter.IsChargingAttack)
             {
@@ -280,6 +360,7 @@ namespace Scripts.Character
                 };
             }
 
+            labelStyle.alignment = TextAnchor.MiddleCenter;
             Rect textRect = new Rect(posX, posY - 22f, barWidth, 20f);
             if (isMaxCharge)
             {

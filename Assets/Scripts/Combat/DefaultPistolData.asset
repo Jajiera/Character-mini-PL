@@ -1,0 +1,39 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 29fc0cfb5b744fb581c43275c5086ca6, type: 3}
+  m_Name: DefaultPistolData
+  m_EditorClassIdentifier: Assembly-CSharp::Scripts.Data.WeaponDataSO
+  weaponName: "Pistola T\xE1ctica"
+  weaponId: tactical_pistol
+  description: "Pistola semiautom\xE1tica de tiro r\xE1pido sin carga. Cartucho de 12 balas con recarga autom\xE1tica."
+  baseDamage: 22
+  maxDamage: 22
+  timeBetweenShots: 0.22
+  allowCharging: 0
+  chargeActivationDelay: 0.2
+  maxAttackChargeTime: 1.2
+  cartridgeCapacity: 12
+  reloadDuration: 1.2
+  autoReloadOnEmptyAttack: 1
+  bulletPrefab: {fileID: 8978421093868399526, guid: 30be932f0cd201648be6eb93e9d6724c, type: 3}
+  shootForce: 60
+  maxRaycastDistance: 150
+  hitLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  recoilKickBack: 0.05
+  recoilKickUp: 3.5
+  recoilReturnSpeed: 12
+  shootSound: {fileID: 0}
+  reloadSound: {fileID: 0}
+  emptyClickSound: {fileID: 0}
+  addTracerTrail: 1

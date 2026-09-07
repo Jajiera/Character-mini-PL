@@ -1,13 +1,13 @@
 using System.Collections.Generic;
-using UnityEngine;
 using Scripts.Core;
+using UnityEngine;
 
 namespace Scripts.Combat
 {
     public class CombatCommandQueue : MonoBehaviour
     {
         [SerializeField] private int maxQueueSize = 3;
-        private readonly Queue<ICommand> commandQueue = new Queue<ICommand>();
+        private readonly Queue<ICommand> commandQueue = new();
 
         public int QueueCount => commandQueue.Count;
 

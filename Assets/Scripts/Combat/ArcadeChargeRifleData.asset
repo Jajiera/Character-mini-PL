@@ -1,0 +1,39 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 29fc0cfb5b744fb581c43275c5086ca6, type: 3}
+  m_Name: ArcadeChargeRifleData
+  m_EditorClassIdentifier: Assembly-CSharp::Scripts.Data.WeaponDataSO
+  weaponName: "Rifle de Plasma Arcada"
+  weaponId: arcade_charge_rifle
+  description: "Rifle de energ\xEDa con condensador de plasma. Permite disparo est\xE1ndar r\xE1pido o mantener presionado para un disparo de plasma de m\xE1ximo poder."
+  baseDamage: 25
+  maxDamage: 75
+  timeBetweenShots: 0.35
+  allowCharging: 1
+  chargeActivationDelay: 0.2
+  maxAttackChargeTime: 1.2
+  cartridgeCapacity: 8
+  reloadDuration: 1.5
+  autoReloadOnEmptyAttack: 1
+  bulletPrefab: {fileID: 8978421093868399526, guid: 30be932f0cd201648be6eb93e9d6724c, type: 3}
+  shootForce: 75
+  maxRaycastDistance: 150
+  hitLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  recoilKickBack: 0.08
+  recoilKickUp: 5
+  recoilReturnSpeed: 9
+  shootSound: {fileID: 0}
+  reloadSound: {fileID: 0}
+  emptyClickSound: {fileID: 0}
+  addTracerTrail: 1

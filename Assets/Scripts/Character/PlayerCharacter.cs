@@ -18,6 +18,8 @@ namespace Scripts.Character
     [RequireComponent(typeof(InteractionDetector))]
     public class PlayerCharacter : MonoBehaviour, IDamageable
     {
+        #region Serialized Fields - Profiles & Dependencies
+
         [Header("Character Profile & Data (Flyweight)")]
         [SerializeField] private CharacterDataSO characterProfile;
         [SerializeField] private MovementDataSO fallbackMovementData;
@@ -25,19 +27,27 @@ namespace Scripts.Character
         [Header("System Dependencies")]
         [SerializeField] private InputReader inputReader;
 
-        [Header("Internal References")]
-        [SerializeField] private GroundDetector groundDetector;
+        [Header("Internal Component References")]
+        [HideInInspector] [SerializeField] private GroundDetector groundDetector;
         [SerializeField] private PlayerStateMachine stateMachine;
         [SerializeField] private CombatCommandQueue commandQueue;
         [SerializeField] private InteractionDetector interactionDetector;
         [SerializeField] private UnityEngine.CharacterController characterController;
 
+        #endregion
+
+        #region Serialized Fields - Visuals & Stance
+
         [Header("Visual Representation & Stance Transition")]
         [SerializeField] private Transform visualModel;
         [SerializeField] private float stanceTransitionSpeed = 12.0f;
 
+        #endregion
+
+        #region Serialized Fields - Camera & Aiming
+
         [Header("Camera & Direction Alignment")]
-        [Tooltip("Si es false, el personaje siempre le da la espalda a la cámara y hace strafe (sin girar antinaturalmente al moverse).")]
+        [Tooltip("Si es false, el personaje siempre le da la espalda a la cámara y hace strafe.")]
         [SerializeField] private bool shouldFaceMoveDirection = false;
         public Transform cameraTransform;
 
@@ -50,47 +60,54 @@ namespace Scripts.Character
         [SerializeField] private float aimPitchMin = -45f;
         [SerializeField] private float aimPitchMax = 60f;
 
-        public GameObject CrosshairUI
-        {
-            get => crosshairUI;
-            set => crosshairUI = value;
-        }
+        #endregion
 
-        private float currentAimPitch = 0f;
+        #region Serialized Fields - Combat & Weapon
 
         [Header("Combat & Weapon References")]
-        [Tooltip("Arma equipada (ej. ArcadeGun con ProjectileWeapon). Si se deja vacío se auto-detecta en los hijos.")]
+        [Tooltip("Arma equipada (ej. ArcadeGun con ProjectileWeapon). Si se deja vacío se auto-detecta.")]
         [SerializeField] private Weapon currentWeapon;
 
-        public Weapon CurrentWeapon
-        {
-            get => currentWeapon;
-            set => currentWeapon = value;
-        }
-
-        [Header("Combat & Attack Charging")]
+        [Header("Combat & Attack Charging (Fallbacks)")]
+        [Tooltip("Si es true y el arma actual lo permite, el personaje acumulará carga al mantener presionado el botón.")]
+        [SerializeField] private bool allowCharging = true;
+        [SerializeField] private float chargeActivationDelay = 0.2f;
         [SerializeField] private float maxAttackChargeTime = 1.5f;
         [SerializeField] private float baseAttackDamage = 15f;
         [SerializeField] private float maxAttackDamage = 45f;
 
-        private bool isChargingAttack = false;
-        private float currentAttackChargeTimer = 0f;
-        private bool maxChargeReachedLogged = false;
+        #endregion
 
+        #region Runtime State Fields
 
-        private float targetStanceHeight = 2.0f;
-        private Vector3 targetStanceCenter = Vector3.zero;
-        private float currentStanceHeight = 2.0f;
-        private Vector3 currentStanceCenter = Vector3.zero;
-
-        // Current runtime physical values
+        // Runtime Physics & Health
         private Vector3 currentVelocity;
         private float verticalVelocity;
         private float currentHealth;
         private bool isInvulnerable;
         private float rotationVelocity;
+        private float currentAimPitch = 0f;
+        private UnityEngine.Camera cachedMainCamera;
 
-        // Concrete States instances
+        // Capsule & Stance Dimension Management
+        private float targetStanceHeight = 2.0f;
+        private Vector3 targetStanceCenter = Vector3.zero;
+        private float currentStanceHeight = 2.0f;
+        private Vector3 currentStanceCenter = Vector3.zero;
+        private float baseRadius = 0.5f;
+        private bool isStanceTransitioning = false;
+
+        // Attack Charge State
+        private bool isHoldingAttack = false;
+        private float attackHoldTimer = 0f;
+        private bool isChargingAttack = false;
+        private bool maxChargeReachedLogged = false;
+
+        #endregion
+
+        #region Public Properties
+
+        // Concrete States Instances
         public IdleState IdleState { get; private set; }
         public WalkingState WalkingState { get; private set; }
         public SprintingState SprintingState { get; private set; }
@@ -100,9 +117,9 @@ namespace Scripts.Character
         public SlidingState SlidingState { get; private set; }
         public RollingState RollingState { get; private set; }
 
-        public MovementDataSO ActiveMovementData => 
-            characterProfile != null && characterProfile.MovementParameters != null 
-                ? characterProfile.MovementParameters 
+        public MovementDataSO ActiveMovementData =>
+            characterProfile != null && characterProfile.MovementParameters != null
+                ? characterProfile.MovementParameters
                 : fallbackMovementData;
 
         public CombatCommandQueue CommandQueue => commandQueue;
@@ -110,6 +127,7 @@ namespace Scripts.Character
         public InteractionDetector InteractionDetector => interactionDetector;
         public bool IsInvulnerable => isInvulnerable;
         public float VerticalVelocity => verticalVelocity;
+
         public bool ShouldFaceMoveDirection
         {
             get => shouldFaceMoveDirection;
@@ -119,86 +137,64 @@ namespace Scripts.Character
         public bool IsAiming => inputReader != null && inputReader.IsAiming;
         public Transform EyeTarget => eyeTarget;
 
-        public bool IsChargingAttack => isChargingAttack;
-        public float AttackChargeRatio => maxAttackChargeTime > 0f ? Mathf.Clamp01(currentAttackChargeTimer / maxAttackChargeTime) : 0f;
-        public float CurrentAttackChargeTimer => currentAttackChargeTimer;
-        public float MaxAttackChargeTime => maxAttackChargeTime;
+        public GameObject CrosshairUI
+        {
+            get => crosshairUI;
+            set => crosshairUI = value;
+        }
 
-        // Visual and audio observer events (SRP)
+        public Weapon CurrentWeapon
+        {
+            get => currentWeapon;
+            set
+            {
+                currentWeapon = value;
+                if (currentWeapon != null)
+                {
+                    currentWeapon.SetOwner(this);
+                }
+            }
+        }
+
+        // Combat Parameters (Prioritizing Weapon Definition, Fallback to Character)
+        public bool AllowCharging => currentWeapon != null ? currentWeapon.AllowCharging : allowCharging;
+        public float ChargeActivationDelay => currentWeapon != null ? currentWeapon.ChargeActivationDelay : chargeActivationDelay;
+        public float BaseAttackDamage => currentWeapon != null ? currentWeapon.BaseDamage : baseAttackDamage;
+        public float MaxAttackDamage => currentWeapon != null ? currentWeapon.MaxDamage : maxAttackDamage;
+        public float MaxAttackChargeTime => currentWeapon != null ? currentWeapon.MaxAttackChargeTime : maxAttackChargeTime;
+
+        // Combat Runtime Info
+        public bool IsHoldingAttack => isHoldingAttack;
+        public bool IsChargingAttack => isChargingAttack;
+        public float CurrentAttackChargeTimer => isChargingAttack ? Mathf.Max(0f, attackHoldTimer - ChargeActivationDelay) : 0f;
+        public float AttackChargeRatio => (isChargingAttack && MaxAttackChargeTime > 0f)
+            ? Mathf.Clamp01((attackHoldTimer - ChargeActivationDelay) / MaxAttackChargeTime)
+            : 0f;
+
+        public int CurrentAmmo => currentWeapon != null ? currentWeapon.CurrentAmmo : 0;
+        public int CartridgeCapacity => currentWeapon != null ? currentWeapon.CartridgeCapacity : 0;
+        public bool IsReloading => currentWeapon != null && currentWeapon.IsReloading;
+        public float ReloadProgress => currentWeapon != null ? currentWeapon.ReloadProgress : 0f;
+
+        #endregion
+
+        #region Observer Events (SRP)
+
         public event System.Action AttackTriggeredEvent;
         public event System.Action<float> AttackReleasedEvent;
         public event System.Action AttackChargeStartedEvent;
         public event System.Action AttackMaxChargeReachedEvent;
         public event System.Action InteractTriggeredEvent;
 
+        #endregion
+
+        #region Unity Lifecycle
+
         private void Awake()
         {
-            if (characterController == null)
-            {
-                characterController = GetComponent<UnityEngine.CharacterController>();
-            }
-
-            if (stateMachine == null)
-            {
-                stateMachine = GetComponent<PlayerStateMachine>();
-            }
-
-            if (groundDetector == null)
-            {
-                groundDetector = GetComponent<GroundDetector>();
-            }
-
-            if (commandQueue == null)
-            {
-                commandQueue = GetComponent<CombatCommandQueue>();
-            }
-
-            if (interactionDetector == null)
-            {
-                interactionDetector = GetComponent<InteractionDetector>();
-                if (interactionDetector == null)
-                {
-                    interactionDetector = gameObject.AddComponent<InteractionDetector>();
-                }
-            }
-
-            if (GetComponent<CharacterVisualFeedback>() == null)
-            {
-                gameObject.AddComponent<CharacterVisualFeedback>();
-            }
-
+            InitializeDependencies();
+            InitializeVisualsAndCamera();
             EnsureCurrentWeapon();
-
-
-            // Disable redundant CapsuleCollider if present to avoid blocking crouch/prone
-            CapsuleCollider redundantCollider = GetComponent<CapsuleCollider>();
-            if (redundantCollider != null)
-            {
-                redundantCollider.enabled = false;
-            }
-
-            if (cameraTransform == null && UnityEngine.Camera.main != null)
-            {
-                cameraTransform = UnityEngine.Camera.main.transform;
-            }
-
-            if (eyeTarget == null)
-            {
-                eyeTarget = transform.Find("EyeTarget");
-            }
-
-            SetupVisualModel();
-
-            targetStanceHeight = characterController != null ? characterController.height : 2.0f;
-            targetStanceCenter = characterController != null ? characterController.center : Vector3.zero;
-            currentStanceHeight = targetStanceHeight;
-            currentStanceCenter = targetStanceCenter;
-
-            if (characterController != null)
-            {
-                baseRadius = characterController.radius;
-            }
-
             InitializeCharacterProfile();
             InitializeStates();
         }
@@ -229,15 +225,17 @@ namespace Scripts.Character
                 inputReader.AttackCanceledEvent -= HandleAttackCanceled;
                 inputReader.InteractPerformedEvent -= HandleInteractPerformed;
                 inputReader.AimEvent -= HandleAimEvent;
+            }
 
-                isChargingAttack = false;
-                currentAttackChargeTimer = 0f;
-                maxChargeReachedLogged = false;
+            // Limpieza estricta de estado de ataque al deshabilitar
+            isHoldingAttack = false;
+            isChargingAttack = false;
+            attackHoldTimer = 0f;
+            maxChargeReachedLogged = false;
 
-                if (crosshairUI != null)
-                {
-                    crosshairUI.SetActive(false);
-                }
+            if (crosshairUI != null)
+            {
+                crosshairUI.SetActive(false);
             }
         }
 
@@ -261,123 +259,6 @@ namespace Scripts.Character
             stateMachine.Tick();
         }
 
-        private void UpdateAimOrientation()
-        {
-            if (IsAiming)
-            {
-                Vector2 look = inputReader != null ? inputReader.CurrentLookInput : Vector2.zero;
-
-                // Rotar horizontalmente el cuerpo del jugador (Yaw)
-                if (Mathf.Abs(look.x) > 0.001f)
-                {
-                    transform.Rotate(Vector3.up, look.x * aimSensitivityX, Space.World);
-                }
-
-                // Rotar verticalmente el EyeTarget (Pitch)
-                if (Mathf.Abs(look.y) > 0.001f)
-                {
-                    currentAimPitch = Mathf.Clamp(currentAimPitch - look.y * aimSensitivityY, aimPitchMin, aimPitchMax);
-                }
-
-                if (eyeTarget != null)
-                {
-                    eyeTarget.localRotation = Quaternion.Euler(currentAimPitch, 0f, 0f);
-                }
-            }
-            else if (eyeTarget != null && Quaternion.Angle(eyeTarget.localRotation, Quaternion.identity) > 0.05f)
-            {
-                eyeTarget.localRotation = Quaternion.Slerp(eyeTarget.localRotation, Quaternion.identity, 10f * Time.deltaTime);
-            }
-        }
-
-        private void FindCrosshairIfNull()
-        {
-            if (crosshairUI == null)
-            {
-                crosshairUI = GameObject.Find("miraDisparo") ?? GameObject.Find("MiraDisparo");
-
-                if (crosshairUI == null)
-                {
-                    var rootObjects = UnityEngine.SceneManagement.SceneManager.GetActiveScene().GetRootGameObjects();
-                    foreach (var root in rootObjects)
-                    {
-                        if (root != null && root.name.Equals("miraDisparo", System.StringComparison.OrdinalIgnoreCase))
-                        {
-                            crosshairUI = root;
-                            break;
-                        }
-                    }
-                }
-
-                if (crosshairUI == null)
-                {
-                    var allCanvases = Resources.FindObjectsOfTypeAll<Canvas>();
-                    foreach (var c in allCanvases)
-                    {
-                        if (c != null && c.gameObject.scene.isLoaded && c.gameObject.name.Equals("miraDisparo", System.StringComparison.OrdinalIgnoreCase))
-                        {
-                            crosshairUI = c.gameObject;
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-
-        private void EnsureCurrentWeapon()
-        {
-            if (currentWeapon == null)
-            {
-                currentWeapon = GetComponentInChildren<Scripts.Combat.Weapon>();
-                if (currentWeapon == null)
-                {
-                    Transform gunChild = transform.Find("ArcadeGun") 
-                                          ?? transform.Find("arcadegun") 
-                                          ?? transform.Find("Gun") 
-                                          ?? transform.Find("Weapon")
-                                          ?? transform.Find("Body/ArcadeGun");
-                    if (gunChild != null)
-                    {
-                        currentWeapon = gunChild.gameObject.AddComponent<Scripts.Combat.ProjectileWeapon>();
-                        Debug.Log($"[PlayerCharacter] 🔫 ProjectileWeapon añadido automáticamente a '{gunChild.name}'");
-                    }
-                }
-            }
-        }
-
-        private void HandleAimEvent(bool isAiming)
-        {
-            FindCrosshairIfNull();
-            if (crosshairUI != null)
-            {
-                crosshairUI.SetActive(isAiming);
-            }
-
-            if (isAiming)
-            {
-                Transform cam = GetActiveCameraTransform();
-                if (cam != null)
-                {
-                    // Al comenzar a apuntar, alinea el Yaw del jugador inmediatamente con el frente de la cámara
-                    Vector3 camForward = cam.forward;
-                    camForward.y = 0f;
-                    if (camForward.sqrMagnitude > 0.001f)
-                    {
-                        transform.rotation = Quaternion.LookRotation(camForward.normalized, Vector3.up);
-                    }
-
-                    // Obtener el pitch inicial de la cámara para transición suave continua
-                    currentAimPitch = cam.eulerAngles.x;
-                    if (currentAimPitch > 180f) currentAimPitch -= 360f;
-                    currentAimPitch = Mathf.Clamp(currentAimPitch, aimPitchMin, aimPitchMax);
-                    if (eyeTarget != null)
-                    {
-                        eyeTarget.localRotation = Quaternion.Euler(currentAimPitch, 0f, 0f);
-                    }
-                }
-            }
-        }
-
         private void FixedUpdate()
         {
             stateMachine.FixedTick();
@@ -388,29 +269,90 @@ namespace Scripts.Character
             AlignWithCameraHeading();
         }
 
-        private void AlignWithCameraHeading()
-        {
-            if (shouldFaceMoveDirection || IsAiming) return;
+        #endregion
 
-            Transform cam = GetActiveCameraTransform();
-            if (cam != null)
+        #region Initialization Helpers
+
+        private void InitializeDependencies()
+        {
+            if (characterController == null)
             {
-                Vector3 camForward = cam.forward;
-                camForward.y = 0f;
-                if (camForward.sqrMagnitude > 0.0001f)
+                characterController = GetComponent<UnityEngine.CharacterController>();
+            }
+
+            if (stateMachine == null)
+            {
+                stateMachine = GetComponent<PlayerStateMachine>();
+            }
+
+            if (groundDetector == null)
+            {
+                groundDetector = GetComponent<GroundDetector>() ?? gameObject.AddComponent<GroundDetector>();
+            }
+
+            if (commandQueue == null)
+            {
+                commandQueue = GetComponent<CombatCommandQueue>();
+            }
+
+            if (interactionDetector == null)
+            {
+                interactionDetector = GetComponent<InteractionDetector>();
+                if (interactionDetector == null)
                 {
-                    transform.rotation = Quaternion.LookRotation(camForward.normalized, Vector3.up);
+                    interactionDetector = gameObject.AddComponent<InteractionDetector>();
                 }
+            }
+
+            if (GetComponent<CharacterVisualFeedback>() == null)
+            {
+                gameObject.AddComponent<CharacterVisualFeedback>();
+            }
+
+            // Desactivar CapsuleCollider adicional si existiera para evitar interferencias
+            if (TryGetComponent<CapsuleCollider>(out var redundantCollider))
+            {
+                redundantCollider.enabled = false;
             }
         }
 
-        public Transform GetActiveCameraTransform()
+        private void InitializeVisualsAndCamera()
         {
-            if (UnityEngine.Camera.main != null)
+            cachedMainCamera = UnityEngine.Camera.main;
+            if (cameraTransform == null && cachedMainCamera != null)
             {
-                return UnityEngine.Camera.main.transform;
+                cameraTransform = cachedMainCamera.transform;
             }
-            return cameraTransform != null ? cameraTransform : transform;
+
+            if (eyeTarget == null)
+            {
+                eyeTarget = transform.Find("EyeTarget");
+            }
+
+            SetupVisualModelReference();
+
+            if (characterController != null)
+            {
+                baseRadius = characterController.radius;
+                targetStanceHeight = characterController.height;
+                targetStanceCenter = characterController.center;
+                currentStanceHeight = targetStanceHeight;
+                currentStanceCenter = targetStanceCenter;
+            }
+        }
+
+        private void SetupVisualModelReference()
+        {
+            if (visualModel != null) return;
+
+            Transform foundChild = transform.Find("Body");
+            if (foundChild == null) foundChild = transform.Find("body");
+            if (foundChild == null) foundChild = transform.Find("VisualModel");
+
+            if (foundChild != null)
+            {
+                visualModel = foundChild;
+            }
         }
 
         private void InitializeCharacterProfile()
@@ -441,14 +383,72 @@ namespace Scripts.Character
             RollingState = new RollingState(this, stateMachine, inputReader);
         }
 
-        #region Input Observer Handlers
+        private void EnsureCurrentWeapon()
+        {
+            if (currentWeapon == null)
+            {
+                currentWeapon = GetComponentInChildren<Weapon>();
+                if (currentWeapon == null)
+                {
+                    Transform gunChild = transform.Find("ArcadeGun");
+                    if (gunChild == null) gunChild = transform.Find("arcadegun");
+                    if (gunChild == null) gunChild = transform.Find("Gun");
+                    if (gunChild == null) gunChild = transform.Find("Weapon");
+                    if (gunChild == null) gunChild = transform.Find("Body/ArcadeGun");
+
+                    if (gunChild != null)
+                    {
+                        currentWeapon = gunChild.gameObject.AddComponent<ProjectileWeapon>();
+                        Debug.Log($"[PlayerCharacter] 🔫 ProjectileWeapon asignado a '{gunChild.name}'");
+                    }
+                    else
+                    {
+                        currentWeapon = Object.FindAnyObjectByType<Weapon>();
+                    }
+                }
+            }
+
+            if (currentWeapon != null)
+            {
+                currentWeapon.SetOwner(this);
+            }
+        }
+
+        private void FindCrosshairIfNull()
+        {
+            if (crosshairUI != null) return;
+
+            GameObject found = GameObject.Find("miraDisparo");
+            if (found == null) found = GameObject.Find("MiraDisparo");
+
+            if (found != null)
+            {
+                crosshairUI = found;
+                return;
+            }
+
+            // Búsqueda en objetos raíz activos de la escena
+            var rootObjects = UnityEngine.SceneManagement.SceneManager.GetActiveScene().GetRootGameObjects();
+            for (int i = 0; i < rootObjects.Length; i++)
+            {
+                var root = rootObjects[i];
+                if (root != null && root.name.Equals("miraDisparo", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    crosshairUI = root;
+                    return;
+                }
+            }
+        }
+
+        #endregion
+
+        #region Input Event Handlers
 
         private void HandleJumpStarted()
         {
-            // Bloquea estrictamente el salto si ya está en el aire (JumpingState) o en posturas evasivas/prone
             if (stateMachine.CurrentState == JumpingState ||
-                stateMachine.CurrentState == RollingState || 
-                stateMachine.CurrentState == ProneState || 
+                stateMachine.CurrentState == RollingState ||
+                stateMachine.CurrentState == ProneState ||
                 stateMachine.CurrentState == SlidingState)
             {
                 return;
@@ -464,12 +464,10 @@ namespace Scripts.Character
         {
             if (stateMachine.CurrentState == CrouchingState)
             {
-                // Al presionar C estando en Crouch, pasa a Prone (cuerpo a tierra)
                 stateMachine.ChangeState(ProneState);
             }
             else if (stateMachine.CurrentState == ProneState)
             {
-                // Al presionar C estando en Prone, se levanta de nuevo a Standing (Walk o Idle)
                 stateMachine.ChangeState(inputReader.CurrentMoveInput.sqrMagnitude > 0.01f ? WalkingState : IdleState);
             }
             else if (stateMachine.CurrentState == SprintingState)
@@ -490,48 +488,35 @@ namespace Scripts.Character
             }
         }
 
-        private void HandleAttackStarted()
+        private void HandleAimEvent(bool isAiming)
         {
-            isChargingAttack = true;
-            currentAttackChargeTimer = 0f;
-            maxChargeReachedLogged = false;
-            Debug.Log("[Combat] ⏳ Input Ataque Detectado: Comenzando carga de ataque (mantén presionado)...");
-            AttackChargeStartedEvent?.Invoke();
-        }
-
-        private void UpdateAttackCharge()
-        {
-            if (isChargingAttack)
+            FindCrosshairIfNull();
+            if (crosshairUI != null)
             {
-                currentAttackChargeTimer += Time.deltaTime;
-                if (!maxChargeReachedLogged && currentAttackChargeTimer >= maxAttackChargeTime)
+                crosshairUI.SetActive(isAiming);
+            }
+
+            if (isAiming)
+            {
+                Transform cam = GetActiveCameraTransform();
+                if (cam != null)
                 {
-                    maxChargeReachedLogged = true;
-                    Debug.Log($"[Combat] ★ ¡CARGA MÁXIMA DE ATAQUE COMPLETA! (Tiempo: {maxAttackChargeTime:F1}s | Carga: 100%) - ¡Listo para liberar!");
-                    AttackMaxChargeReachedEvent?.Invoke();
+                    Vector3 camForward = cam.forward;
+                    camForward.y = 0f;
+                    if (camForward.sqrMagnitude > 0.001f)
+                    {
+                        transform.rotation = Quaternion.LookRotation(camForward.normalized, Vector3.up);
+                    }
+
+                    currentAimPitch = cam.eulerAngles.x;
+                    if (currentAimPitch > 180f) currentAimPitch -= 360f;
+                    currentAimPitch = Mathf.Clamp(currentAimPitch, aimPitchMin, aimPitchMax);
+                    if (eyeTarget != null)
+                    {
+                        eyeTarget.localRotation = Quaternion.Euler(currentAimPitch, 0f, 0f);
+                    }
                 }
             }
-        }
-
-        private void HandleAttackCanceled()
-        {
-            if (!isChargingAttack) return;
-
-            float chargeDuration = currentAttackChargeTimer;
-            float chargeRatio = maxAttackChargeTime > 0f ? Mathf.Clamp01(chargeDuration / maxAttackChargeTime) : 1f;
-
-            isChargingAttack = false;
-            currentAttackChargeTimer = 0f;
-            maxChargeReachedLogged = false;
-
-            Debug.Log($"[Combat] 💥 Input Ataque Liberado: Botón soltado tras {chargeDuration:F2}s de carga (Carga: {chargeRatio * 100f:F0}%). Liberando ataque...");
-
-            float bufferTime = ActiveMovementData != null ? ActiveMovementData.CommandBufferDuration : 0.35f;
-            commandQueue.EnqueueCommand(new AttackCommand(this, chargeRatio, chargeDuration, bufferTime, baseAttackDamage, maxAttackDamage));
-            commandQueue.TryExecuteNextCommand();
-
-            AttackTriggeredEvent?.Invoke();
-            AttackReleasedEvent?.Invoke(chargeRatio);
         }
 
         private void HandleInteractPerformed()
@@ -550,7 +535,105 @@ namespace Scripts.Character
 
         #endregion
 
-        #region Physical Movement Utilities
+        #region Combat & Attack Charging Flow
+
+        private void HandleAttackStarted()
+        {
+            EnsureCurrentWeapon();
+
+            if (currentWeapon != null && currentWeapon.IsReloading)
+            {
+                Debug.Log("[Combat] ⏳ El arma está recargándose...");
+                return;
+            }
+
+            if (currentWeapon != null && currentWeapon.CurrentAmmo <= 0)
+            {
+                if (currentWeapon.AutoReloadOnEmptyAttack)
+                {
+                    currentWeapon.TryReload();
+                }
+                return;
+            }
+
+            if (AllowCharging)
+            {
+                // Al activar carga: NUNCA disparar. Iniciar retención y acumulación de energía.
+                isHoldingAttack = true;
+                attackHoldTimer = 0f;
+                isChargingAttack = false;
+                maxChargeReachedLogged = false;
+                Debug.Log($"[Combat] ⏳ Input Ataque: Manteniendo botón para cargar (umbral: {ChargeActivationDelay:F2}s). ¡NO SE DISPARARÁ hasta soltar!");
+            }
+            else
+            {
+                // Disparo directo inmediato únicamente para armas sin carga
+                ExecuteAttack(0f, 0f);
+            }
+        }
+
+        private void UpdateAttackCharge()
+        {
+            if (!isHoldingAttack || !AllowCharging) return;
+
+            attackHoldTimer += Time.deltaTime;
+
+            if (!isChargingAttack && attackHoldTimer >= ChargeActivationDelay)
+            {
+                isChargingAttack = true;
+                Debug.Log("[Combat] ⚡ ¡Umbral superado! Comenzando carga del ataque...");
+                AttackChargeStartedEvent?.Invoke();
+            }
+
+            if (isChargingAttack)
+            {
+                float activeChargeTime = attackHoldTimer - ChargeActivationDelay;
+                if (!maxChargeReachedLogged && activeChargeTime >= MaxAttackChargeTime)
+                {
+                    maxChargeReachedLogged = true;
+                    Debug.Log($"[Combat] ★ ¡CARGA MÁXIMA COMPLETA! (Tiempo: {MaxAttackChargeTime:F1}s | Carga: 100%) - ¡Listo para liberar!");
+                    AttackMaxChargeReachedEvent?.Invoke();
+                }
+            }
+        }
+
+        private void HandleAttackCanceled()
+        {
+            if (!isHoldingAttack) return;
+
+            float holdDuration = attackHoldTimer;
+            float chargeRatio = isChargingAttack ? AttackChargeRatio : 0f;
+
+            // Limpieza estricta de banderas de carga ANTES de despachar el disparo
+            isHoldingAttack = false;
+            isChargingAttack = false;
+            maxChargeReachedLogged = false;
+
+            if (AllowCharging)
+            {
+                // Disparo único ejecutado tras liberar el botón
+                ExecuteAttack(chargeRatio, holdDuration);
+            }
+        }
+
+        private void ExecuteAttack(float chargeRatio, float duration)
+        {
+            if (currentWeapon != null && currentWeapon.IsReloading)
+            {
+                return;
+            }
+
+            float bufferTime = ActiveMovementData != null ? ActiveMovementData.CommandBufferDuration : 0.35f;
+            commandQueue.EnqueueCommand(new AttackCommand(this, chargeRatio, duration, bufferTime, BaseAttackDamage, MaxAttackDamage));
+            commandQueue.TryExecuteNextCommand();
+
+            AttackTriggeredEvent?.Invoke();
+            AttackReleasedEvent?.Invoke(chargeRatio);
+        }
+
+        #endregion
+
+        #region Physical Movement & Rotation
 
         public void AccelerateTowards(Vector3 targetDirection, float targetSpeed, float rate)
         {
@@ -588,7 +671,6 @@ namespace Scripts.Character
             Transform cam = GetActiveCameraTransform();
             if (cam != null)
             {
-                // 1. Obtener la dirección relativa de la cámara
                 Vector3 forward = cam.forward;
                 Vector3 right = cam.right;
 
@@ -598,7 +680,6 @@ namespace Scripts.Character
                 forward.Normalize();
                 right.Normalize();
 
-                // 2. Calcular la dirección de movimiento basada en los inputs y la cámara
                 return ((forward * moveInput.y) + (right * moveInput.x)).normalized;
             }
 
@@ -626,13 +707,17 @@ namespace Scripts.Character
 
         public bool IsGrounded()
         {
-            if (characterController != null && characterController.isGrounded)
+            if (groundDetector != null)
             {
-                return true;
+                return groundDetector.IsGroundedAndStable();
             }
 
-            return groundDetector != null && groundDetector.IsGroundedAndStable();
+            return characterController != null && characterController.isGrounded;
         }
+
+        public Vector3 GroundNormal => groundDetector != null ? groundDetector.SurfaceNormal : Vector3.up;
+        public float GroundAngle => groundDetector != null ? groundDetector.SurfaceAngle : 0f;
+        public RaycastHit CurrentGroundHit => groundDetector != null ? groundDetector.GroundHit : default;
 
         public void ApplyGravity()
         {
@@ -640,7 +725,7 @@ namespace Scripts.Character
 
             if (grounded && verticalVelocity < 0f)
             {
-                verticalVelocity = -2f; // Slight downward force to keep grounded on uneven terrain
+                verticalVelocity = -2f;
             }
             else
             {
@@ -651,72 +736,113 @@ namespace Scripts.Character
 
         public void MoveWithCurrentVelocity()
         {
+            if (characterController == null) return;
             Vector3 motion = (currentVelocity + new Vector3(0f, verticalVelocity, 0f)) * Time.fixedDeltaTime;
             characterController.Move(motion);
         }
+
+        public Transform GetActiveCameraTransform()
+        {
+            if (cachedMainCamera == null)
+            {
+                cachedMainCamera = UnityEngine.Camera.main;
+            }
+
+            if (cachedMainCamera != null)
+            {
+                return cachedMainCamera.transform;
+            }
+
+            return cameraTransform != null ? cameraTransform : transform;
+        }
+
+        private void AlignWithCameraHeading()
+        {
+            if (shouldFaceMoveDirection || IsAiming) return;
+
+            Transform cam = GetActiveCameraTransform();
+            if (cam != null)
+            {
+                Vector3 camForward = cam.forward;
+                camForward.y = 0f;
+                if (camForward.sqrMagnitude > 0.0001f)
+                {
+                    transform.rotation = Quaternion.LookRotation(camForward.normalized, Vector3.up);
+                }
+            }
+        }
+
+        private void UpdateAimOrientation()
+        {
+            if (IsAiming)
+            {
+                Vector2 look = inputReader != null ? inputReader.CurrentLookInput : Vector2.zero;
+
+                if (Mathf.Abs(look.x) > 0.001f)
+                {
+                    transform.Rotate(Vector3.up, look.x * aimSensitivityX, Space.World);
+                }
+
+                if (Mathf.Abs(look.y) > 0.001f)
+                {
+                    currentAimPitch = Mathf.Clamp(currentAimPitch - look.y * aimSensitivityY, aimPitchMin, aimPitchMax);
+                }
+
+                if (eyeTarget != null)
+                {
+                    eyeTarget.localRotation = Quaternion.Euler(currentAimPitch, 0f, 0f);
+                }
+            }
+            else if (eyeTarget != null && Quaternion.Angle(eyeTarget.localRotation, Quaternion.identity) > 0.05f)
+            {
+                eyeTarget.localRotation = Quaternion.Slerp(eyeTarget.localRotation, Quaternion.identity, 10f * Time.deltaTime);
+            }
+        }
+
+        #endregion
+
+        #region Stance & Capsule Optimization (PhysX Churn Elimination)
 
         public void SetStanceDimensions(float targetHeight, Vector3 targetCenter)
         {
             targetStanceHeight = targetHeight;
 
             // Anclaje matemático automático a la base de los pies (suelo):
-            // baseFeetY = standingCenter.y - (standingHeight / 2)
-            // Para cualquier altura H: center.y = baseFeetY + (H / 2)
-            // Esto garantiza que el fondo de la cápsula y del modelo 3D siempre toquen el suelo con precisión milimétrica sin flotar.
             float standingHeight = ActiveMovementData != null ? ActiveMovementData.StandingHeight : 2.0f;
             Vector3 standingCenter = ActiveMovementData != null ? ActiveMovementData.StandingCenter : Vector3.zero;
             float baseFeetY = standingCenter.y - (standingHeight / 2.0f);
 
             float anchoredCenterY = baseFeetY + (targetHeight / 2.0f);
             targetStanceCenter = new Vector3(targetCenter.x, anchoredCenterY, targetCenter.z);
+            isStanceTransitioning = true;
         }
-
-        private void SetupVisualModel()
-        {
-            if (visualModel != null) return;
-
-            Transform existingChild = transform.Find("Body") ?? transform.Find("body") ?? transform.Find("VisualModel");
-            if (existingChild != null)
-            {
-                visualModel = existingChild;
-                return;
-            }
-
-            // If MeshFilter and MeshRenderer are directly on this root GameObject, move them to a child
-            MeshFilter rootFilter = GetComponent<MeshFilter>();
-            MeshRenderer rootRenderer = GetComponent<MeshRenderer>();
-            if (rootFilter != null && rootRenderer != null)
-            {
-                GameObject childObj = new GameObject("VisualModel");
-                childObj.transform.SetParent(transform, false);
-
-                MeshFilter childFilter = childObj.AddComponent<MeshFilter>();
-                childFilter.sharedMesh = rootFilter.sharedMesh;
-
-                MeshRenderer childRenderer = childObj.AddComponent<MeshRenderer>();
-                childRenderer.sharedMaterials = rootRenderer.sharedMaterials;
-
-                Destroy(rootRenderer);
-                Destroy(rootFilter);
-
-                visualModel = childObj.transform;
-            }
-        }
-
-        private float baseRadius = 0.5f;
 
         private void UpdateStanceDimensions()
         {
-            if (characterController == null) return;
+            if (characterController == null || !isStanceTransitioning) return;
+
+            float heightDelta = Mathf.Abs(currentStanceHeight - targetStanceHeight);
+            float centerDelta = Vector3.Distance(currentStanceCenter, targetStanceCenter);
+
+            // Si ya convergió a la postura deseada, fijar valores y detener reconfiguración de PhysX
+            if (heightDelta < 0.001f && centerDelta < 0.001f)
+            {
+                currentStanceHeight = targetStanceHeight;
+                currentStanceCenter = targetStanceCenter;
+                ApplyStanceToControllerAndVisuals();
+                isStanceTransitioning = false;
+                return;
+            }
 
             currentStanceHeight = Mathf.Lerp(currentStanceHeight, targetStanceHeight, Time.deltaTime * stanceTransitionSpeed);
             currentStanceCenter = Vector3.Lerp(currentStanceCenter, targetStanceCenter, Time.deltaTime * stanceTransitionSpeed);
+            ApplyStanceToControllerAndVisuals();
+        }
 
-            // Restricción crítica de Unity: CharacterController.height NO PUEDE ser menor que 2 * radius.
-            // Para permitir alturas bajas como 0.5m o 0.21m sin que Unity las bloquee en 1.0m, adaptamos el radio:
+        private void ApplyStanceToControllerAndVisuals()
+        {
             float maxAllowedRadius = currentStanceHeight * 0.48f;
             characterController.radius = Mathf.Min(baseRadius, maxAllowedRadius);
-
             characterController.height = currentStanceHeight;
             characterController.center = currentStanceCenter;
 
@@ -730,14 +856,14 @@ namespace Scripts.Character
             }
         }
 
+        #endregion
+
+        #region IDamageable Implementation & Invulnerability
+
         public void SetInvulnerability(bool active)
         {
             isInvulnerable = active;
         }
-
-        #endregion
-
-        #region IDamageable Implementation
 
         public void TakeDamage(float amount, Vector3 hitPoint, Vector3 hitDirection)
         {

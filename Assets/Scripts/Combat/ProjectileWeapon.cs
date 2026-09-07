@@ -1,52 +1,65 @@
+using System.Collections;
 using UnityEngine;
-using UnityEngine.InputSystem;
-using Scripts.Character;
+using Scripts.Data;
 
 namespace Scripts.Combat
 {
     public class ProjectileWeapon : Weapon
     {
-        [Header("Projectile & Physics")]
-        [SerializeField] private GameObject bulletPrefab;
-        [SerializeField] private float shootForce = 60f;
-        [SerializeField] private LayerMask hitLayers = ~0;
-        [SerializeField] private float maxRaycastDistance = 150f;
+        [Header("Fallback Ballistics & Overrides")]
+        [UnityEngine.Serialization.FormerlySerializedAs("bulletPrefab")]
+        [SerializeField] private GameObject fallbackBulletPrefab;
+        [UnityEngine.Serialization.FormerlySerializedAs("shootForce")]
+        [SerializeField] private float fallbackShootForce = 60f;
+        [UnityEngine.Serialization.FormerlySerializedAs("hitLayers")]
+        [SerializeField] private LayerMask fallbackHitLayers = ~0;
+        [UnityEngine.Serialization.FormerlySerializedAs("maxRaycastDistance")]
+        [SerializeField] private float fallbackMaxRaycastDistance = 150f;
 
         [Header("Camera & Aim Alignment")]
         [Tooltip("Cámara de referencia para trazar la línea de visión hacia la mirilla (miraDisparo)")]
         [SerializeField] private Transform aimCamera;
 
-        [Header("Audio & Visual Effects")]
+        [Header("Audio & Visual Components")]
         [SerializeField] private ParticleSystem muzzleFlash;
-        [SerializeField] private AudioClip shootSound;
         [SerializeField] private AudioSource audioSource;
-        [SerializeField] private bool addTracerTrail = true;
+        [UnityEngine.Serialization.FormerlySerializedAs("shootSound")]
+        [SerializeField] private AudioClip fallbackShootSound;
+        [SerializeField] private AudioClip fallbackReloadSound;
+        [SerializeField] private AudioClip fallbackEmptyClickSound;
 
-        [Header("Recoil Animation")]
+        [Header("Recoil Animation (Procedural)")]
         [SerializeField] private Transform modelTransform;
-        [SerializeField] private float recoilKickBack = 0.06f;
-        [SerializeField] private float recoilKickUp = 4.0f;
-        [SerializeField] private float recoilReturnSpeed = 10.0f;
-
-        [Header("Standalone Input (Opcional)")]
-        [Tooltip("Activar solo si se desea que el arma escuche el botón Attack de forma autónoma")]
-        [SerializeField] private bool standaloneInput = false;
-        [SerializeField] private bool isSemiAutomatic = true;
+        [UnityEngine.Serialization.FormerlySerializedAs("recoilKickBack")]
+        [SerializeField] private float fallbackRecoilKickBack = 0.06f;
+        [UnityEngine.Serialization.FormerlySerializedAs("recoilKickUp")]
+        [SerializeField] private float fallbackRecoilKickUp = 4.0f;
+        [UnityEngine.Serialization.FormerlySerializedAs("recoilReturnSpeed")]
+        [SerializeField] private float fallbackRecoilReturnSpeed = 10.0f;
 
         private float nextShootTime;
-        private InputAction shootAction;
+        private Coroutine reloadCoroutine;
 
         private Vector3 startLocalPosition;
         private Quaternion startLocalRotation;
 
-        public GameObject BulletPrefab
-        {
-            get => bulletPrefab;
-            set => bulletPrefab = value;
-        }
+        public GameObject BulletPrefab => weaponData != null && weaponData.BulletPrefab != null ? weaponData.BulletPrefab : fallbackBulletPrefab;
+        public float ShootForce => weaponData != null ? weaponData.ShootForce : fallbackShootForce;
+        public float MaxRaycastDistance => weaponData != null ? weaponData.MaxRaycastDistance : fallbackMaxRaycastDistance;
+        public LayerMask HitLayers => weaponData != null ? weaponData.HitLayers : fallbackHitLayers;
 
-        private void Awake()
+        public AudioClip ShootSound => weaponData != null && weaponData.ShootSound != null ? weaponData.ShootSound : fallbackShootSound;
+        public AudioClip ReloadSound => weaponData != null && weaponData.ReloadSound != null ? weaponData.ReloadSound : fallbackReloadSound;
+        public AudioClip EmptyClickSound => weaponData != null && weaponData.EmptyClickSound != null ? weaponData.EmptyClickSound : fallbackEmptyClickSound;
+
+        public float RecoilKickBack => weaponData != null ? weaponData.RecoilKickBack : fallbackRecoilKickBack;
+        public float RecoilKickUp => weaponData != null ? weaponData.RecoilKickUp : fallbackRecoilKickUp;
+        public float RecoilReturnSpeed => weaponData != null ? weaponData.RecoilReturnSpeed : fallbackRecoilReturnSpeed;
+
+        protected override void Awake()
         {
+            base.Awake();
+
             if (audioSource == null)
             {
                 audioSource = GetComponent<AudioSource>();
@@ -74,105 +87,165 @@ namespace Scripts.Combat
         {
             EnsureCameraReference();
             EnsureBulletPrefab();
-
-            if (standaloneInput)
-            {
-                shootAction = InputSystem.actions != null ? InputSystem.actions.FindAction("Attack") : null;
-                if (shootAction != null)
-                {
-                    shootAction.started += OnStandaloneAttackPressed;
-                }
-            }
-        }
-
-        private void OnDestroy()
-        {
-            if (standaloneInput && shootAction != null)
-            {
-                shootAction.started -= OnStandaloneAttackPressed;
-            }
-        }
-
-        private void OnStandaloneAttackPressed(InputAction.CallbackContext context)
-        {
-            if (isSemiAutomatic)
-            {
-                Fire(0f);
-            }
         }
 
         private void Update()
         {
-            if (standaloneInput && !isSemiAutomatic && shootAction != null && shootAction.IsPressed())
-            {
-                Fire(0f);
-            }
-
-            // Recuperación suave del retroceso
+            // Recuperación suave del retroceso procedimental
             if (modelTransform != null)
             {
-                modelTransform.localPosition = Vector3.Lerp(modelTransform.localPosition, startLocalPosition, recoilReturnSpeed * Time.deltaTime);
-                modelTransform.localRotation = Quaternion.Slerp(modelTransform.localRotation, startLocalRotation, recoilReturnSpeed * Time.deltaTime);
+                modelTransform.localPosition = Vector3.Lerp(modelTransform.localPosition, startLocalPosition, RecoilReturnSpeed * Time.deltaTime);
+                modelTransform.localRotation = Quaternion.Slerp(modelTransform.localRotation, startLocalRotation, RecoilReturnSpeed * Time.deltaTime);
             }
         }
 
         public override bool CanFire()
         {
-            return Time.time >= nextShootTime;
+            return base.CanFire() && Time.time >= nextShootTime;
+        }
+
+        public override bool TryReload()
+        {
+            if (IsReloading || CurrentAmmo >= CartridgeCapacity)
+            {
+                return false;
+            }
+
+            if (reloadCoroutine != null)
+            {
+                StopCoroutine(reloadCoroutine);
+            }
+
+            reloadCoroutine = StartCoroutine(ReloadRoutine());
+            return true;
+        }
+
+        private IEnumerator ReloadRoutine()
+        {
+            IsReloading = true;
+            ReloadProgress = 0f;
+            NotifyReloadStarted();
+
+            Debug.Log($"[ProjectileWeapon] 🔄 Recargando nuevo cartucho de '{WeaponName}' ({CartridgeCapacity} balas, {ReloadDuration:F1}s)...");
+
+            if (audioSource != null && ReloadSound != null)
+            {
+                audioSource.PlayOneShot(ReloadSound);
+            }
+
+            float timer = 0f;
+            float duration = Mathf.Max(0.05f, ReloadDuration);
+
+            while (timer < duration)
+            {
+                timer += Time.deltaTime;
+                ReloadProgress = Mathf.Clamp01(timer / duration);
+                yield return null;
+            }
+
+            CurrentAmmo = CartridgeCapacity;
+            IsReloading = false;
+            ReloadProgress = 1f;
+            reloadCoroutine = null;
+
+            NotifyReloadFinished();
+            NotifyAmmoChanged();
+
+            Debug.Log($"[ProjectileWeapon] ✅ ¡Cartucho recargado! Munición: {CurrentAmmo}/{CartridgeCapacity}");
         }
 
         public override void Fire(float chargeRatio = 0f)
         {
-            if (Time.time < nextShootTime) return;
-            nextShootTime = Time.time + fireRate;
+            // 0. Si el personaje dueño está actualmente sosteniendo o cargando el ataque, bloquear cualquier disparo anticipado
+            Scripts.Character.PlayerCharacter owner = Owner != null ? Owner : GetComponentInParent<Scripts.Character.PlayerCharacter>();
+            if (owner != null && owner.AllowCharging && (owner.IsHoldingAttack || owner.IsChargingAttack))
+            {
+                Debug.LogWarning("[ProjectileWeapon] 🛑 Disparo bloqueado: El arma se encuentra en proceso de CARGA. No disparará hasta soltar el botón.");
+                return;
+            }
+
+            // 1. Si está recargando, ignorar disparo
+            if (IsReloading)
+            {
+                Debug.Log("[ProjectileWeapon] ⏳ Imposible disparar: El arma se está recargando.");
+                return;
+            }
+
+            // 2. Si el cartucho está vacío, activar recarga automática al pulsar el botón de ataque
+            if (CurrentAmmo <= 0)
+            {
+                if (audioSource != null && EmptyClickSound != null)
+                {
+                    audioSource.PlayOneShot(EmptyClickSound);
+                }
+
+                if (AutoReloadOnEmptyAttack)
+                {
+                    Debug.Log("[ProjectileWeapon] ⚠️ ¡Cartucho vacío! Iniciando recarga automática...");
+                    TryReload();
+                }
+                else
+                {
+                    Debug.LogWarning("[ProjectileWeapon] ⚠️ ¡Sin munición en el cartucho!");
+                }
+                return;
+            }
+
+            // 3. Respetar cadencia de fuego (TimeBetweenShots)
+            if (Time.time < nextShootTime)
+            {
+                return;
+            }
+            nextShootTime = Time.time + TimeBetweenShots;
+
+            // 4. Consumir munición del cartucho
+            CurrentAmmo--;
+            NotifyAmmoChanged();
 
             EnsureFirePoint();
             EnsureCameraReference();
             EnsureBulletPrefab();
 
-            // 1. Trazar rayo desde el centro de la cámara (donde apunta la mira de disparo)
+            // 5. Trazar rayo desde el centro de la cámara (donde apunta la mirilla de disparo)
             Vector3 targetPoint;
             if (aimCamera != null)
             {
                 Ray ray = new Ray(aimCamera.position, aimCamera.forward);
-                if (Physics.Raycast(ray, out RaycastHit hit, maxRaycastDistance, hitLayers, QueryTriggerInteraction.Ignore))
+                if (Physics.Raycast(ray, out RaycastHit hit, MaxRaycastDistance, HitLayers, QueryTriggerInteraction.Ignore))
                 {
                     targetPoint = hit.point;
                 }
                 else
                 {
-                    targetPoint = ray.GetPoint(maxRaycastDistance);
+                    targetPoint = ray.GetPoint(MaxRaycastDistance);
                 }
             }
             else
             {
-                targetPoint = firePoint.position + firePoint.forward * maxRaycastDistance;
+                targetPoint = firePoint.position + firePoint.forward * MaxRaycastDistance;
             }
 
-            // 2. Calcular la dirección balística precisa desde el cañón (firePoint) hacia el objetivo
+            // 6. Calcular dirección balística precisa desde el cañón (firePoint) hacia el objetivo
             Vector3 shootDirection = (targetPoint - firePoint.position).normalized;
-
-            // 3. Posición de salida segura (desplazada ligeramente al frente para evitar colisión con el cañón/jugador)
             Vector3 spawnPosition = firePoint.position + (shootDirection * 0.35f);
 
-            // 4. Instanciar la bala o crear una de respaldo si no hay prefab
+            // 7. Instanciar bala o generar respaldo
             GameObject bulletObj;
-            if (bulletPrefab != null)
+            if (BulletPrefab != null)
             {
-                bulletObj = Instantiate(bulletPrefab, spawnPosition, Quaternion.LookRotation(shootDirection));
+                bulletObj = Instantiate(BulletPrefab, spawnPosition, Quaternion.LookRotation(shootDirection));
             }
             else
             {
                 bulletObj = CreateFallbackBullet(spawnPosition, shootDirection);
             }
 
-            // 5. Ajustar escala si el modelo es microscópico
             if (bulletObj.transform.localScale.x < 0.12f)
             {
                 bulletObj.transform.localScale = Vector3.one * 0.2f;
             }
 
-            // 6. Ignorar colisiones entre la bala y el jugador/arma para evitar auto-destrucción inmediata
+            // 8. Ignorar colisiones con el personaje que dispara
             Collider bulletCollider = bulletObj.GetComponent<Collider>();
             if (bulletCollider != null)
             {
@@ -187,22 +260,25 @@ namespace Scripts.Combat
                 }
             }
 
-            // 7. Configurar script Bullet y daño según la carga del ataque
-            float calculatedDamage = Mathf.Lerp(baseDamage, maxDamage, Mathf.Clamp01(chargeRatio));
+            // 9. Configurar daño según la carga del ataque
+            float effectiveCharge = AllowCharging ? Mathf.Clamp01(chargeRatio) : 0f;
+            float calculatedDamage = Mathf.Lerp(BaseDamage, MaxDamage, effectiveCharge);
+
             Bullet bullet = bulletObj.GetComponent<Bullet>();
             if (bullet == null)
             {
                 bullet = bulletObj.AddComponent<Bullet>();
             }
-            bullet.Initialize(calculatedDamage, shootForce);
+            bullet.Initialize(calculatedDamage, ShootForce);
 
-            // 8. Añadir estela visual luminosa (Tracer) si no tiene
-            if (addTracerTrail && bulletObj.GetComponent<TrailRenderer>() == null)
+            // 10. Añadir estela visual luminosa (Tracer) si corresponde
+            bool addTracer = weaponData != null ? weaponData.AddTracerTrail : true;
+            if (addTracer && bulletObj.GetComponent<TrailRenderer>() == null)
             {
                 AddBulletTracer(bulletObj);
             }
 
-            // 9. Aplicar impulso balístico
+            // 11. Impulso balístico
             Rigidbody rb = bulletObj.GetComponent<Rigidbody>();
             if (rb == null)
             {
@@ -210,13 +286,21 @@ namespace Scripts.Combat
                 rb.useGravity = false;
             }
             rb.linearVelocity = Vector3.zero;
-            rb.AddForce(shootDirection * shootForce, ForceMode.VelocityChange);
+            rb.AddForce(shootDirection * ShootForce, ForceMode.VelocityChange);
 
-            Debug.Log($"[ProjectileWeapon] 💥 ¡Bala disparada desde {firePoint.name}! Daño: {calculatedDamage:F1} | Dirección: {shootDirection}");
+            string chargeText = AllowCharging && effectiveCharge > 0.05f ? $" | Carga: {effectiveCharge * 100f:F0}%" : "";
+            Debug.Log($"[ProjectileWeapon] 💥 Disparo de '{WeaponName}'! Balas: {CurrentAmmo}/{CartridgeCapacity} | Daño: {calculatedDamage:F1}{chargeText}");
 
-            // 10. Efectos audiovisuales y retroceso
+            // 12. Efectos audiovisuales y retroceso
             PlayMuzzleAndAudio();
             ApplyRecoil();
+            NotifyWeaponFired();
+
+            // 13. Si se agotó la última bala, avisar que el siguiente toque recargará
+            if (CurrentAmmo == 0 && AutoReloadOnEmptyAttack)
+            {
+                Debug.Log("[ProjectileWeapon] ⚠️ ¡Última bala disparada! Presiona atacar nuevamente para recargar el cartucho.");
+            }
         }
 
         private GameObject CreateFallbackBullet(Vector3 position, Vector3 direction)
@@ -268,10 +352,10 @@ namespace Scripts.Combat
                 muzzleFlash.Play();
             }
 
-            if (audioSource != null && shootSound != null)
+            if (audioSource != null && ShootSound != null)
             {
                 audioSource.pitch = Random.Range(0.96f, 1.04f);
-                audioSource.PlayOneShot(shootSound);
+                audioSource.PlayOneShot(ShootSound);
             }
         }
 
@@ -279,8 +363,8 @@ namespace Scripts.Combat
         {
             if (modelTransform != null)
             {
-                modelTransform.localPosition -= new Vector3(0f, 0f, recoilKickBack);
-                modelTransform.localRotation *= Quaternion.Euler(-recoilKickUp, 0f, 0f);
+                modelTransform.localPosition -= new Vector3(0f, 0f, RecoilKickBack);
+                modelTransform.localRotation *= Quaternion.Euler(-RecoilKickUp, 0f, 0f);
             }
         }
 
@@ -308,18 +392,13 @@ namespace Scripts.Combat
 
         private void EnsureBulletPrefab()
         {
-            if (bulletPrefab == null)
+            if (fallbackBulletPrefab == null)
             {
 #if UNITY_EDITOR
-                bulletPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/Bullet.prefab");
-                if (bulletPrefab == null)
+                fallbackBulletPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/Bullet.prefab");
+                if (fallbackBulletPrefab == null)
                 {
-                    bulletPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/3dModels/Bullet/Bullet.prefab");
-                }
-
-                if (bulletPrefab != null)
-                {
-                    Debug.Log($"[ProjectileWeapon] 📦 Auto-asignado '{bulletPrefab.name}' en BulletPrefab.");
+                    fallbackBulletPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/3dModels/Bullet/Bullet.prefab");
                 }
 #endif
             }

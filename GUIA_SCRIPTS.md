@@ -33,6 +33,7 @@ Esta guía documenta exhaustivamente todos los scripts de la arquitectura del pr
 7. [Subflujo Datos & Perfiles (Flyweight)](#6-subflujo-datos--perfiles-flyweight)
    - [MovementDataSO.cs](#movementdatasocs)
    - [CharacterDataSO.cs](#characterdatasocs)
+   - [WeaponDataSO.cs](#weapondatasocs)
 8. [Interfaces del Core](#7-interfaces-del-core)
 9. [Scripts Auxiliares y Legado](#8-scripts-auxiliares-y-legado)
 
@@ -102,8 +103,15 @@ Esta guía documenta exhaustivamente todos los scripts de la arquitectura del pr
 - `VerticalVelocity`: Velocidad vertical actual acumulada por la gravedad o salto.
 - `IsAiming`: Retorna `true` si el jugador mantiene pulsado el botón derecho (Aim).
 - `EyeTarget`: Transform del punto focal de la mirada.
-- `IsChargingAttack`: Retorna `true` si el botón de ataque está presionado y cargando.
-- `AttackChargeRatio`: Valor normalizado entre `0.0f` y `1.0f` con el progreso de carga actual.
+- `AllowCharging`: Indica si el arma equipada admite carga de ataque.
+- `ChargeActivationDelay`: Tiempo de pulsación requerido antes de que empiece la carga.
+- `IsHoldingAttack`: Retorna `true` mientras el botón de ataque está presionado.
+- `IsChargingAttack`: Retorna `true` solo una vez superado el umbral de activación (`ChargeActivationDelay`).
+- `AttackChargeRatio`: Valor normalizado entre `0.0f` y `1.0f` con el progreso de carga actual tras el umbral.
+- `CurrentAmmo`: Cantidad de balas disponibles en el cartucho actual.
+- `CartridgeCapacity`: Capacidad máxima del cartucho del arma equipada.
+- `IsReloading`: Retorna `true` mientras el arma está cambiando de cartucho.
+- `ReloadProgress`: Progreso normalizado de recarga de 0 a 1.
 - Instancias de estados: `IdleState`, `WalkingState`, `SprintingState`, `JumpingState`, `CrouchingState`, `ProneState`, `SlidingState`, `RollingState`.
 
 #### Métodos Públicos:
@@ -267,18 +275,29 @@ Esta guía documenta exhaustivamente todos los scripts de la arquitectura del pr
 ### `Weapon.cs` (Abstracto)
 - **Ubicación:** `Assets/Scripts/Combat/Weapon.cs`
 - **Namespace:** `Scripts.Combat`
-- **Propósito:** Contrato base extensible para cualquier arma del juego (armas de proyectil, hitscan, armas cuerpo a cuerpo).
+- **Propósito:** Contrato base extensible para cualquier arma del juego (armas de proyectil, hitscan, armas cuerpo a cuerpo) integrado con `WeaponDataSO` (patrón Flyweight) y gestión de cartucho/munición.
 
-#### Variables Protegidas (`[SerializeField]`):
-- `weaponName` (`string`): Nombre identificador del arma.
+#### Variables Serializadas (`[SerializeField]`):
+- `weaponData` (`WeaponDataSO`): ScriptableObject modular con la configuración del arma.
 - `firePoint` (`Transform`): Punto exacto en la punta del cañón desde donde nace el proyectil.
-- `baseDamage` (`float`): Daño base del arma sin carga.
-- `maxDamage` (`float`): Daño máximo del arma con carga completa.
-- `fireRate` (`float`): Cadencia de disparo (segundos mínimos entre disparos).
+- Variables de respaldo (`fallbackBaseDamage`, `fallbackMaxDamage`, `fallbackTimeBetweenShots`, `fallbackCartridgeCapacity`, `fallbackReloadDuration`).
 
-#### Métodos Abstractos:
-- `bool CanFire()`: Retorna si la cadencia de fuego permite disparar.
+#### Propiedades y Métodos Clave:
+- `CurrentAmmo` (`int`): Balas restantes en el cartucho actual.
+- `CartridgeCapacity` (`int`): Capacidad total del cartucho según el perfil de datos.
+- `IsReloading` (`bool`): Indica si el arma está actualmente recargando un nuevo cartucho.
+- `ReloadProgress` (`float`): Progreso de recarga normalizado (0.0 a 1.0).
+- `AllowCharging` (`bool`): Define si el arma permite carga de ataque.
+- `ChargeActivationDelay` (`float`): Umbral de tiempo antes de comenzar a cargar.
+- `bool CanFire()`: Retorna `true` si la cadencia de fuego y la munición permiten disparar.
+- `bool TryReload()`: Inicia la recarga del cartucho.
 - `void Fire(float chargeRatio = 0f)`: Ejecuta la lógica de disparo modulada por el nivel de carga (0.0 a 1.0).
+
+#### Eventos de Observador:
+- `OnAmmoChangedEvent(int current, int max)`: Notifica cambios en el contador de munición.
+- `OnReloadStartedEvent`: Notifica el inicio de la recarga.
+- `OnReloadFinishedEvent`: Notifica la culminación de la recarga.
+- `OnWeaponFiredEvent`: Notifica la eyección de un disparo.
 
 ---
 
@@ -286,29 +305,21 @@ Esta guía documenta exhaustivamente todos los scripts de la arquitectura del pr
 - **Ubicación:** `Assets/Scripts/Combat/ProjectileWeapon.cs`
 - **Namespace:** `Scripts.Combat`
 - **Hereda de:** `Weapon`
-- **Propósito:** Arma física balística. Calcula el punto de mira exacto proyectando un raycast desde la cámara hacia la retícula central y reorienta el proyectil para que converja en dicho punto.
+- **Propósito:** Arma física balística modularizada. Consume munición del cartucho, soporta recarga automática al pulsar ataque cuando está vacía, calcula el punto de mira exacto proyectando un raycast desde la cámara hacia la retícula central y reorienta el proyectil para que converja en dicho punto con retroceso procedimental.
 
 #### Variables Serializadas (`[SerializeField]`):
 | Variable | Tipo | Default | Descripción |
 | :--- | :--- | :--- | :--- |
-| `bulletPrefab` | `GameObject` | `null` | Prefab de la bala con componente `Bullet`. Si es null, genera una bala por código. |
-| `shootForce` | `float` | `60.0f` | Velocidad e impulso de eyección del proyectil. |
-| `hitLayers` | `LayerMask` | `~0` (Todo)| Capas que bloquean la línea de visión del raycast de apuntado. |
-| `maxRaycastDistance` | `float` | `150.0f` | Distancia máxima para trazar el punto de mira desde la cámara. |
+| `weaponData` | `WeaponDataSO` | `null` | ScriptableObject que define daño, cadencia, munición, retroceso y balas. |
+| `fallbackBulletPrefab` | `GameObject` | `null` | Prefab de la bala de respaldo si no está definido en el ScriptableObject. |
 | `aimCamera` | `Transform` | `null` | Transform de la cámara de apuntado. Se auto-detecta si es null. |
 | `muzzleFlash` | `ParticleSystem`| `null`| Partículas del fogonazo del cañón al disparar. |
-| `shootSound` | `AudioClip` | `null` | Clip de audio del disparo. |
 | `audioSource` | `AudioSource` | `null` | Componente de audio 3D/espacial. |
-| `addTracerTrail` | `bool` | `true` | Agrega estela de luz (TrailRenderer) si la bala no la tiene. |
 | `modelTransform` | `Transform` | `null` | Transform del modelo visual para la animación procedimental de retroceso. |
-| `recoilKickBack` | `float` | `0.06f` | Distancia hacia atrás que retrocede el arma al disparar. |
-| `recoilKickUp` | `float` | `4.0f` | Ángulo de elevación (rotación en X) por el retroceso. |
-| `recoilReturnSpeed`| `float` | `10.0f` | Velocidad de recuperación hacia la posición de reposo del arma. |
-| `standaloneInput` | `bool` | `false` | Si es true, escucha el input por su cuenta sin requerir PlayerCharacter. |
-| `isSemiAutomatic` | `bool` | `true` | Disparo tiro a tiro vs continuo. |
 
 #### Métodos Públicos:
-- `Fire(float chargeRatio = 0f)`: Instancia el proyectil, calcula daño dinámico con `Mathf.Lerp(baseDamage, maxDamage, chargeRatio)`, orienta la trayectoria hacia el crosshair y aplica retroceso procedimental.
+- `Fire(float chargeRatio = 0f)`: Consume 1 bala del cartucho (o dispara recarga automática si está vacío), calcula daño según `Mathf.Lerp(BaseDamage, MaxDamage, chargeRatio)`, orienta la trayectoria hacia el crosshair y aplica retroceso procedimental.
+- `TryReload()`: Ejecuta la corrutina de recarga `ReloadRoutine()`, actualizando `ReloadProgress` y recargando el cartucho al 100%.
 
 ---
 
@@ -528,6 +539,31 @@ Esta guía documenta exhaustivamente todos los scripts de la arquitectura del pr
 - `movementParameters` (`MovementDataSO`): Parámetros de locomoción vinculados.
 - `maxHealth` (`float`, default: `100.0f`): Vida máxima del personaje.
 - `maxStamina` (`float`, default: `100.0f`): Resistencia máxima.
+
+---
+
+### `WeaponDataSO.cs`
+- **Ubicación:** `Assets/Scripts/Data/WeaponDataSO.cs`
+- **Namespace:** `Scripts.Data`
+- **Tipo:** `ScriptableObject`
+- **Propósito:** Configuración de armas modulares desacopladas (patrón Flyweight). Permite definir ilimitadas armas (pistolas, rifles de plasma, escopetas) con sus propios atributos de daño, cadencia, munición, recarga, balística y soporte opcional de carga de ataque.
+
+#### Variables Serializadas y Propiedades:
+- **Identidad:** `weaponName` (string), `weaponId` (string), `description` (string).
+- **Daño y Cadencia:**
+  - `baseDamage` (`float`, default: `20.0f`): Daño sin carga.
+  - `maxDamage` (`float`, default: `50.0f`): Daño a carga máxima.
+  - `timeBetweenShots` (`float`, default: `0.25f`): Cadencia mínima en segundos entre balas.
+- **Carga de Ataque (Opcional):**
+  - `allowCharging` (`bool`, default: `false`): Si es `false`, dispara inmediatamente sin modo carga.
+  - `chargeActivationDelay` (`float`, default: `0.2f`): Umbral de tiempo manteniendo el botón para iniciar la carga.
+  - `maxAttackChargeTime` (`float`, default: `1.2f`): Tiempo necesario para llegar al 100% tras el umbral.
+- **Cartucho y Munición:**
+  - `cartridgeCapacity` (`int`, default: `12`): Balas por cartucho.
+  - `reloadDuration` (`float`, default: `1.2f`): Tiempo de recarga del cartucho.
+  - `autoReloadOnEmptyAttack` (`bool`, default: `true`): Recarga automática al pulsar ataque sin munición.
+- **Balística y Retroceso:** `bulletPrefab` (GameObject), `shootForce` (float), `maxRaycastDistance` (float), `hitLayers` (LayerMask), `recoilKickBack` (float), `recoilKickUp` (float), `recoilReturnSpeed` (float).
+- **Efectos Audiovisuales:** `shootSound` (AudioClip), `reloadSound` (AudioClip), `emptyClickSound` (AudioClip), `addTracerTrail` (bool).
 
 ---
 
