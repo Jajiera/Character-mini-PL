@@ -12,16 +12,16 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1eccf60ab5308bd4fabb3b0e33aaae41, type: 3}
   m_Name: DefaultMovementData
   m_EditorClassIdentifier: Assembly-CSharp::Scripts.Data.MovementDataSO
-  walkSpeed: 4.5
+  walkSpeed: 10.04
   sprintSpeed: 7.5
   crouchSpeed: 2.2
   proneSpeed: 1.2
   slideInitialSpeed: 9
   rollSpeed: 8
-  acceleration: 12
-  deceleration: 14
-  rotationSmoothTime: 0.1
-  gravityMultiplier: 4.81
+  acceleration: 27.9
+  deceleration: 59.6
+  rotationSmoothTime: 2.9
+  gravityMultiplier: 2.77
   jumpForce: 14.6
   airControl: 0.5
   groundCheckRadius: 0.25

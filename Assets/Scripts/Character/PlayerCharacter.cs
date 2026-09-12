@@ -127,6 +127,7 @@ namespace Scripts.Character
         public InteractionDetector InteractionDetector => interactionDetector;
         public bool IsInvulnerable => isInvulnerable;
         public float VerticalVelocity => verticalVelocity;
+        public Vector3 CurrentVelocity => currentVelocity;
 
         public bool ShouldFaceMoveDirection
         {
@@ -638,6 +639,21 @@ namespace Scripts.Character
         public void AccelerateTowards(Vector3 targetDirection, float targetSpeed, float rate)
         {
             Vector3 targetVelocity = targetDirection * targetSpeed;
+
+            if (currentVelocity.sqrMagnitude > 0.1f && targetDirection.sqrMagnitude > 0.01f)
+            {
+                // Evaluar qué tan brusco es el cambio de dirección (1 = misma dirección, 0 = 90°, -1 = sentido contrario)
+                float dot = Vector3.Dot(currentVelocity.normalized, targetDirection.normalized);
+
+                if (dot < 0.65f)
+                {
+                    // Aumentar la tasa de reacción para cancelar la inercia contraria rápidamente (counter-steering)
+                    // sin introducir componentes perpendiculares espurias (evita desplazamientos residuales en Z)
+                    float turnResponsiveness = Mathf.Lerp(4.0f, 1.5f, (dot + 1f) * 0.5f);
+                    rate *= turnResponsiveness;
+                }
+            }
+
             currentVelocity = Vector3.MoveTowards(currentVelocity, targetVelocity, rate * Time.fixedDeltaTime);
         }
 

@@ -62,10 +62,6 @@ namespace Scripts.Input
         {
             if (IsAiming == active) return;
             IsAiming = active;
-            if (IsAiming && IsSprintActive)
-            {
-                SetSprintActive(false);
-            }
             AimEvent?.Invoke(IsAiming);
         }
 
@@ -172,9 +168,13 @@ namespace Scripts.Input
 
         public void OnSprint(InputAction.CallbackContext context)
         {
-            if (context.performed)
+            if (context.started || context.performed)
             {
-                ToggleSprint();
+                SetSprintActive(true);
+            }
+            else if (context.canceled)
+            {
+                SetSprintActive(false);
             }
         }
 

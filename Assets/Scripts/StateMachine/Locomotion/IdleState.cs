@@ -13,7 +13,6 @@ namespace Scripts.StateMachine.Locomotion
 
         public override void Enter()
         {
-            inputReader.SetSprintActive(false);
             character.SetStanceDimensions(MovementData.StandingHeight, MovementData.StandingCenter);
             character.ResetHorizontalVelocity();
         }
@@ -22,7 +21,7 @@ namespace Scripts.StateMachine.Locomotion
         {
             if (inputReader.CurrentMoveInput.sqrMagnitude > 0.01f)
             {
-                if (inputReader.IsSprintPressed)
+                if (inputReader.IsSprintPressed && !character.IsAiming)
                 {
                     stateMachine.ChangeState(character.SprintingState);
                 }

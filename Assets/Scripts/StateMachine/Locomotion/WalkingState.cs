@@ -22,12 +22,11 @@ namespace Scripts.StateMachine.Locomotion
 
             if (moveInput.sqrMagnitude < 0.01f)
             {
-                inputReader.SetSprintActive(false);
                 stateMachine.ChangeState(character.IdleState);
                 return;
             }
 
-            if (inputReader.IsSprintActive)
+            if (inputReader.IsSprintActive && !character.IsAiming)
             {
                 stateMachine.ChangeState(character.SprintingState);
                 return;
