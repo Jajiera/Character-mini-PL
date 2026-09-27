@@ -12,20 +12,18 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1eccf60ab5308bd4fabb3b0e33aaae41, type: 3}
   m_Name: DefaultMovementData
   m_EditorClassIdentifier: Assembly-CSharp::Scripts.Data.MovementDataSO
-  walkSpeed: 10.04
-  sprintSpeed: 7.5
-  crouchSpeed: 2.2
-  proneSpeed: 1.2
-  slideInitialSpeed: 9
-  rollSpeed: 8
-  acceleration: 27.9
-  deceleration: 59.6
-  rotationSmoothTime: 2.9
+  walkSpeed: 10
+  sprintSpeed: 17
+  crouchSpeed: 5.5
+  proneSpeed: 3.2
+  slideInitialSpeed: 26.4
+  rollSpeed: 13.7
+  acceleration: 30
+  deceleration: 40
+  rotationSmoothTime: 3
   gravityMultiplier: 2.77
-  jumpForce: 14.6
+  jumpForce: 14
   airControl: 0.5
-  groundCheckRadius: 0.25
-  groundCheckOffset: {x: 0, y: -0.9, z: 0}
   groundLayer:
     serializedVersion: 2
     m_Bits: 4294967295
@@ -36,5 +34,5 @@ MonoBehaviour:
   proneHeight: 0.5
   proneCenter: {x: 0, y: -0.75, z: 0}
   slideDuration: 0.8
-  rollDuration: 0.6
+  rollDuration: 0.3
   commandBufferDuration: 0.35
