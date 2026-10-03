@@ -1,13 +1,13 @@
-using UnityEngine;
 using Scripts.Combat;
 using Scripts.Core;
 using Scripts.Data;
 using Scripts.Input;
+using Scripts.Interaction;
 using Scripts.StateMachine;
 using Scripts.StateMachine.Evasive;
 using Scripts.StateMachine.Locomotion;
 using Scripts.StateMachine.Tactical;
-using Scripts.Interaction;
+using UnityEngine;
 
 namespace Scripts.Character
 {
@@ -28,7 +28,7 @@ namespace Scripts.Character
         [SerializeField] private InputReader inputReader;
 
         [Header("Internal Component References")]
-        [HideInInspector] [SerializeField] private GroundDetector groundDetector;
+        [HideInInspector][SerializeField] private GroundDetector groundDetector;
         [SerializeField] private PlayerStateMachine stateMachine;
         [SerializeField] private CombatCommandQueue commandQueue;
         [SerializeField] private InteractionDetector interactionDetector;
@@ -639,6 +639,7 @@ namespace Scripts.Character
         public void AccelerateTowards(Vector3 targetDirection, float targetSpeed, float rate)
         {
             Vector3 targetVelocity = targetDirection * targetSpeed;
+
 
             if (currentVelocity.sqrMagnitude > 0.1f && targetDirection.sqrMagnitude > 0.01f)
             {
